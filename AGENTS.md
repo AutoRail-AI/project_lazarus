@@ -109,13 +109,8 @@ public/
 ### Key Patterns
 
 **Component Structure**: Components are organized in folders with co-located files:
-- `ComponentName.tsx` - Main component
-- `ComponentName.test.tsx` - Vitest unit tests
-- `ComponentName.stories.tsx` - Storybook stories
 
 **Styling**: Uses Tailwind CSS v4 with:
-- `class-variance-authority` (CVA) for component variants
-- `tailwind-merge` for className merging
 
 **Environment Variables**: Managed via T3 Env (`env.mjs`) with Zod validation. Add new env vars there with schema definitions.
 
@@ -226,8 +221,6 @@ Warning: The middleware.ts file is deprecated. Use proxy.ts instead.
 - Change `export function middleware()` → `export function proxy()`
 - Update all references
 
-**Files Affected**: `proxy.ts` (formerly `middleware.ts`)
-
 **Prevention**: Always use `proxy.ts` for Next.js 16+ projects. Never create `middleware.ts`.
 
 ---
@@ -248,9 +241,6 @@ Cannot find module '.prisma/client/default'
 3. Generate Better Auth schema: `npx @better-auth/cli@latest generate`
 4. Regenerate Prisma client: `npx prisma generate`
 
-**Files Affected**: 
-- `prisma/schema.prisma` - Must have placeholder model before Better Auth generation
-- `lib/db/prisma.ts` - Uses lazy/conditional import to allow CLI to read config
 
 **Code Pattern**:
 ```typescript
@@ -287,21 +277,6 @@ Each member of the union type has signatures, but none of those signatures are c
 
 **Fix**: Add `as any` type assertion to all Mongoose model method calls.
 
-**Files Affected** (15+ files):
-- `lib/audit/logger.ts` - `AuditLog.create()`, `AuditLog.find()`
-- `lib/notifications/manager.ts` - `Notification.create()`, `Notification.find()`, `Notification.findOneAndUpdate()`, `Notification.countDocuments()`
-- `lib/usage/tracker.ts` - `Usage.create()`, `Usage.find()`
-- `lib/templates/manager.ts` - `Template.create()`, `Template.find()`, `Template.findById()`, `Template.findByIdAndUpdate()`
-- `lib/webhooks/manager.ts` - `Webhook.find()`, `Webhook.findByIdAndUpdate()`
-- `lib/onboarding/flow.ts` - `Onboarding.findOne()`, `Onboarding.create()`
-- `lib/features/flags.ts` - `FeatureFlag.findOne()`, `FeatureFlag.find()`
-- `lib/rate-limit/middleware.ts` - `RateLimit.findOne()`, `RateLimit.create()`
-- `lib/search/engine.ts` - `SearchIndex.findOneAndUpdate()`, `SearchIndex.find()`, `SearchIndex.deleteOne()`
-- `lib/activity/feed.ts` - All ActivityLog methods
-- `lib/api-keys/manager.ts` - All ApiKey methods
-- `lib/cost/tracker.ts` - `Cost.create()`, `Cost.find()`
-- `app/api/webhooks/stripe/route.ts` - `Subscription.findOneAndUpdate()`
-- `app/billing/page.tsx` - `Subscription.findOne()`
 
 **Code Pattern**:
 ```typescript
@@ -370,9 +345,6 @@ metadata: z.record(z.any()).optional()
 metadata: z.record(z.string(), z.any()).optional()
 ```
 
-**Files Affected**:
-- `lib/utils/validation.ts` - All schema definitions
-- `env.mjs` - All environment variable validations
 
 **Prevention**: 
 - Always use `.refine()` for URL/email validation in Zod v4
@@ -391,11 +363,6 @@ Type error: Property 'messages' does not exist on type 'unknown'.
 ```
 
 **Fix**: Add explicit type assertions to all JSON parsing calls.
-
-**Files Affected**:
-- All API routes: `app/api/**/route.ts`
-- Client components: `components/**/*.tsx`
-- Hooks: `hooks/**/*.ts`
 
 **Code Pattern**:
 ```typescript
@@ -439,8 +406,6 @@ import { organizationClient } from "better-auth/react/plugins"
 import { organizationClient } from "better-auth/client/plugins"
 ```
 
-**Files Affected**: `lib/auth/client.ts`
-
 **Prevention**: Always use `better-auth/client/plugins` for client-side plugins.
 
 ---
@@ -456,8 +421,6 @@ Parsing ecmascript source code failed
 
 **Fix**: Rename files with JSX to `.tsx` extension.
 
-**Files Affected**: 
-- `lib/analytics/client.ts` → `lib/analytics/client.tsx`
 
 **Prevention**: 
 - Always use `.tsx` for files containing JSX
@@ -492,8 +455,6 @@ export interface ICost extends Omit<mongoose.Document, "model"> {
 }
 ```
 
-**Files Affected**: `lib/cost/tracker.ts`
-
 **Prevention**: Use `Omit<mongoose.Document, "conflictingProperty">` when interface properties conflict with Document.
 
 ---
@@ -520,8 +481,6 @@ const ip = req.headers.get("x-forwarded-for")?.split(",")[0] ||
            "anonymous"
 ```
 
-**Files Affected**: `lib/rate-limit/middleware.ts`
-
 **Prevention**: Always extract IP from headers, never use `req.ip`.
 
 ---
@@ -545,8 +504,6 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
 })
 ```
 
-**Files Affected**: `lib/billing/stripe.ts`
-
 **Prevention**: Check Stripe API version compatibility when updating Stripe SDK.
 
 ---
@@ -561,8 +518,6 @@ Could not find a declaration file for module 'js-yaml'.
 ```
 
 **Fix**: Create type declaration file.
-
-**Files Affected**: `js-yaml.d.ts` (created)
 
 **Code Pattern**:
 ```typescript
@@ -606,10 +561,6 @@ const total = items.reduce((sum, item) => sum + item.value, 0)
 const total = items.reduce((sum: number, item: any) => sum + item.value, 0)
 ```
 
-**Files Affected**: 
-- `lib/usage/tracker.ts`
-- `lib/cost/tracker.ts`
-
 **Prevention**: Always type reduce callback parameters explicitly.
 
 ---
@@ -630,8 +581,6 @@ const total = items.reduce((sum: number, item: any) => sum + item.value, 0)
 // ✅ CORRECT - Allow build without env vars
 secret: process.env.BETTER_AUTH_SECRET || "development-secret-change-in-production-min-32-chars",
 ```
-
-**Files Affected**: `lib/auth/auth.ts`
 
 **Prevention**: Always provide fallback for Better Auth secret during build.
 
@@ -658,11 +607,98 @@ return (Template as any).create({
 })
 ```
 
-**Files Affected**: 
-- `lib/templates/manager.ts`
-- `scripts/seed.ts`
-
 **Prevention**: Ensure function signatures match model requirements or use type assertions.
+
+---
+
+### 15. Stripe Client Initialization During Build
+
+**Issue**: Stripe client initialized at module load time causes build failures when `STRIPE_SECRET_KEY` is not set.
+
+**Error**:
+```
+Error: STRIPE_SECRET_KEY is not set
+```
+
+**Fix**: Use lazy initialization with Proxy pattern to defer Stripe client creation until first use.
+
+**Code Pattern**:
+```typescript
+// ❌ WRONG - Fails during build if env var missing
+if (!process.env.STRIPE_SECRET_KEY) {
+  throw new Error("STRIPE_SECRET_KEY is not set")
+}
+export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+  apiVersion: "2025-02-24.acacia",
+})
+
+// ✅ CORRECT - Lazy initialization
+let stripeInstance: Stripe | null = null
+
+function getStripe(): Stripe {
+  if (!stripeInstance) {
+    if (!process.env.STRIPE_SECRET_KEY) {
+      throw new Error("STRIPE_SECRET_KEY is not set")
+    }
+    stripeInstance = new Stripe(process.env.STRIPE_SECRET_KEY, {
+      apiVersion: "2025-02-24.acacia",
+      typescript: true,
+    })
+  }
+  return stripeInstance
+}
+
+// Export as Proxy for backward compatibility
+export const stripe = new Proxy({} as Stripe, {
+  get(_target, prop) {
+    return getStripe()[prop as keyof Stripe]
+  },
+})
+
+// Use getStripe() in functions
+export async function createCheckoutSession(...) {
+  const stripe = getStripe()
+  return stripe.checkout.sessions.create(...)
+}
+```
+
+**Prevention**: 
+- Always use lazy initialization for third-party clients that require environment variables
+- Use Proxy pattern for backward compatibility with existing imports
+- Call initialization function inside each exported function, not at module level
+
+---
+
+### 16. Mongoose Duplicate Index Warnings
+
+**Issue**: Defining index both in schema field (`index: true`) and with `Schema.index()` causes duplicate index warnings.
+
+**Error**:
+```
+[MONGOOSE] Warning: Duplicate schema index on {"tags":1} found.
+```
+
+**Fix**: Use only one method - either `index: true` in field definition OR `Schema.index()`, not both.
+
+**Code Pattern**:
+```typescript
+// ❌ WRONG - Duplicate index definition
+const Schema = new Schema({
+  tags: [{ type: String, index: true }], // Index defined here
+})
+Schema.index({ tags: 1 }) // And here - causes duplicate
+
+// ✅ CORRECT - Use only one method
+const Schema = new Schema({
+  tags: [{ type: String }], // No index here
+})
+Schema.index({ tags: 1 }) // Only here
+```
+
+**Prevention**: 
+- Choose one indexing method and use it consistently
+- Prefer explicit `Schema.index()` for compound indexes
+- Never use both `index: true` and `Schema.index()` for the same field
 
 ---
 
@@ -680,6 +716,8 @@ Before committing changes, verify:
 - [ ] IP addresses extracted from headers, not `req.ip`
 - [ ] Reduce callbacks have explicit type annotations
 - [ ] All environment variable validations use `.refine()` for URLs/emails
+- [ ] Third-party clients (Stripe, etc.) use lazy initialization
+- [ ] No duplicate Mongoose index definitions
 
 ---
 
@@ -716,9 +754,6 @@ Full brand guidelines are in `brand/brand.md`. Key resources:
 | Gradient | logo_3.svg, logo_6.svg | logo_9.svg |
 
 ### Icons (`public/icons/`)
-- `app.svg` - Primary app icon (561x561px, rounded square)
-- `app_black_bg.svg` - App icon on black canvas (1080x1080px, for social media)
-- `background_icon.svg` - Decorative X pattern for backgrounds (use at 20-30% opacity)
 
 ### Brand Colors
 | Color | Hex | Usage |

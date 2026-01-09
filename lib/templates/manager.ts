@@ -38,7 +38,7 @@ const TemplateSchema = new Schema<ITemplate>(
       index: true,
     },
     category: { type: String, index: true },
-    tags: [{ type: String, index: true }],
+    tags: [{ type: String }],
     content: { type: Schema.Types.Mixed, required: true },
     variables: [
       {

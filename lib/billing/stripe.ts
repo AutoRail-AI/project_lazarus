@@ -16,6 +16,7 @@ function getStripe(): Stripe {
   return stripeInstance
 }
 
+// Export stripe as Proxy for backward compatibility
 export const stripe = new Proxy({} as Stripe, {
   get(_target, prop) {
     return getStripe()[prop as keyof Stripe]
@@ -49,6 +50,7 @@ export async function getOrCreateCustomer(
   email: string,
   name?: string
 ): Promise<Stripe.Customer> {
+  const stripe = getStripe()
   // Check if customer exists
   const customers = await stripe.customers.list({
     email,
@@ -78,6 +80,7 @@ export async function createCheckoutSession(
   priceId: string,
   organizationId?: string
 ): Promise<Stripe.Checkout.Session> {
+  const stripe = getStripe()
   return stripe.checkout.sessions.create({
     customer: customerId,
     payment_method_types: ["card"],
@@ -100,6 +103,7 @@ export async function createCheckoutSession(
 export async function createPortalSession(
   customerId: string
 ): Promise<Stripe.BillingPortal.Session> {
+  const stripe = getStripe()
   return stripe.billingPortal.sessions.create({
     customer: customerId,
     return_url: `${process.env.BETTER_AUTH_URL}/billing`,
@@ -111,6 +115,7 @@ export async function getSubscription(
   subscriptionId: string
 ): Promise<Stripe.Subscription | null> {
   try {
+    const stripe = getStripe()
     return await stripe.subscriptions.retrieve(subscriptionId)
   } catch (error) {
     return null
@@ -121,6 +126,7 @@ export async function getSubscription(
 export async function cancelSubscription(
   subscriptionId: string
 ): Promise<Stripe.Subscription> {
+  const stripe = getStripe()
   return stripe.subscriptions.cancel(subscriptionId)
 }
 
