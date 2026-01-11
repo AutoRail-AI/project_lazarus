@@ -55,7 +55,7 @@ corepack enable
 
 # 2. Clone and install dependencies
 git clone <your-repo-url>
-cd modern-nextjs-boilerplate
+cd nextjs_fullstack_boilerplate
 pnpm install
 
 # 3. Configure environment
