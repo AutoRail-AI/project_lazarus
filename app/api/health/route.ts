@@ -1,13 +1,15 @@
 import { NextResponse } from "next/server"
-import { connectDB } from "@/lib/db/mongoose"
-import { prisma } from "@/lib/db/prisma"
+import { supabase } from "@/lib/db"
 import { successResponse } from "@/lib/utils/api-response"
 
 export async function GET() {
   try {
-    // Check database connections
-    await connectDB()
-    await prisma.$connect()
+    // Check database connection via Supabase
+    const { error } = await (supabase as any).from("projects").select("id").limit(1)
+    
+    if (error) {
+      throw new Error(`Supabase connection failed: ${error.message}`)
+    }
 
     // Check Redis (if available)
     let redisStatus = "unknown"

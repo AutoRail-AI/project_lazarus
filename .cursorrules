@@ -1,381 +1,435 @@
-# Cursor Project Rules
+# Project Lazarus Production Rules
 
-**⚠️ CRITICAL: Always follow the rules in RULESETS.md when generating code to prevent build and lint errors.**
+You are a Senior Frontend Engineer and UI/UX Designer at Project Lazarus, an enterprise-grade autonomous AI platform that transmutes legacy software into modern web applications. Your goal is to build a pixel-perfect, highly performant, and accessible web portal using Next.js 16, React 19, and the "Void Black + Rail Purple" (Glass Brain) design system.
 
-This project has mandatory code patterns documented in `RULESETS.md`. These rules prevent known build issues and ensure code compatibility with our tech stack.
-
-## Quick Reference
-
-Before generating ANY code, check these mandatory patterns:
-
-### 1. Error Handling (Catch Blocks)
-**MANDATORY**: Always type catch block errors as `unknown`
-
-```typescript
-// ❌ WRONG
-catch (error) {
-  console.error(error.message)
-}
-
-// ✅ CORRECT
-catch (error: unknown) {
-  const message = error instanceof Error ? error.message : String(error)
-  console.error(message)
-}
-```
-
-### 2. Mongoose Model Operations
-**MANDATORY**: Always use `(Model as any).method()` pattern
-
-```typescript
-// ❌ WRONG
-const user = await User.findOne({ email })
-
-// ✅ CORRECT
-const user = await (User as any).findOne({ email })
-```
-
-**Apply to**: `create()`, `find()`, `findOne()`, `findById()`, `findOneAndUpdate()`, `findByIdAndUpdate()`, `countDocuments()`, `deleteOne()`, `deleteMany()`, `updateOne()`, `updateMany()`
-
-### 3. Zod v4 Validation
-**MANDATORY**: Use `.refine()` for URL/email validation, specify key type for `z.record()`
-
-```typescript
-// ❌ WRONG
-link: z.string().url().optional()
-metadata: z.record(z.any()).optional()
-
-// ✅ CORRECT
-link: z.string().refine(
-  (val) => {
-    if (!val) return true
-    try {
-      new URL(val)
-      return true
-    } catch {
-      return false
-    }
-  },
-  { message: "Invalid URL format" }
-).optional()
-metadata: z.record(z.string(), z.any()).optional()
-```
-
-### 4. JSON Parsing
-**MANDATORY**: Always type assert `await request.json()` and `await response.json()`
-
-```typescript
-// ❌ WRONG
-const body = await request.json()
-const { messages, task } = body
-
-// ✅ CORRECT
-const body = (await request.json()) as {
-  messages?: AgentMessage[]
-  task?: string
-  organizationId?: string
-}
-const { messages, task } = body
-```
-
-### 5. Better Auth Import Paths
-**MANDATORY**: Use `better-auth/client/plugins` for client-side plugins
-
-```typescript
-// ❌ WRONG
-import { organizationClient } from "better-auth/react/plugins"
-
-// ✅ CORRECT
-import { organizationClient } from "better-auth/client/plugins"
-```
-
-### 6. JSX in TypeScript Files
-**MANDATORY**: Always use `.tsx` extension for files containing JSX
-
-```typescript
-// ❌ WRONG - MyComponent.ts
-export function MyComponent() {
-  return <div>Hello</div>
-}
-
-// ✅ CORRECT - MyComponent.tsx
-export function MyComponent() {
-  return <div>Hello</div>
-}
-```
-
-### 7. Next.js 16 Middleware
-**MANDATORY**: Always use `proxy.ts`, never `middleware.ts`
-
-```typescript
-// ❌ WRONG - middleware.ts
-export function middleware() { ... }
-
-// ✅ CORRECT - proxy.ts
-export function proxy() { ... }
-```
-
-### 8. NextRequest IP Address
-**MANDATORY**: Extract IP from headers, never use `req.ip`
-
-```typescript
-// ❌ WRONG
-const ip = req.ip
-
-// ✅ CORRECT
-const ip = req.headers.get("x-forwarded-for")?.split(",")[0] || 
-           req.headers.get("x-real-ip") || 
-           "anonymous"
-```
-
-### 9. Stripe API Version
-**MANDATORY**: Use API version `"2025-02-24.acacia"` for Stripe
-
-```typescript
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2025-02-24.acacia",
-})
-```
-
-### 10. Lazy Initialization
-**MANDATORY**: Use lazy initialization for third-party clients requiring environment variables (Stripe, Redis, etc.)
-
-```typescript
-// ❌ WRONG - Fails during build if env var missing
-if (!process.env.STRIPE_SECRET_KEY) {
-  throw new Error("STRIPE_SECRET_KEY is not set")
-}
-export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-  apiVersion: "2025-02-24.acacia",
-})
-
-// ✅ CORRECT - Lazy initialization
-let stripeInstance: Stripe | null = null
-
-function getStripe(): Stripe {
-  if (!stripeInstance) {
-    if (!process.env.STRIPE_SECRET_KEY) {
-      throw new Error("STRIPE_SECRET_KEY is not set")
-    }
-    stripeInstance = new Stripe(process.env.STRIPE_SECRET_KEY, {
-      apiVersion: "2025-02-24.acacia",
-      typescript: true,
-    })
-  }
-  return stripeInstance
-}
-
-export const stripe = new Proxy({} as Stripe, {
-  get(_target, prop) {
-    return getStripe()[prop as keyof Stripe]
-  },
-})
-```
-
-### 11. Reduce Function Type Annotations
-**MANDATORY**: Always type reduce callback parameters explicitly
-
-```typescript
-// ❌ WRONG
-const total = items.reduce((sum, item) => sum + item.value, 0)
-
-// ✅ CORRECT
-const total = items.reduce((sum: number, item: any) => sum + item.value, 0)
-```
-
-### 12. Mongoose Document Property Conflicts
-**MANDATORY**: Use `Omit<mongoose.Document, "conflictingProperty">` when interface properties conflict
-
-```typescript
-// ❌ WRONG
-export interface ICost extends mongoose.Document {
-  model: string // Conflicts with Document.model
-}
-
-// ✅ CORRECT
-export interface ICost extends Omit<mongoose.Document, "model"> {
-  model: string // Now safe
-}
-```
-
-### 13. Mongoose Duplicate Index Warnings
-**MANDATORY**: Use only one indexing method - either `index: true` OR `Schema.index()`, not both
-
-```typescript
-// ❌ WRONG - Duplicate index definition
-const Schema = new Schema({
-  tags: [{ type: String, index: true }], // Index defined here
-})
-Schema.index({ tags: 1 }) // And here - causes duplicate
-
-// ✅ CORRECT - Use only one method
-const Schema = new Schema({
-  tags: [{ type: String }], // No index here
-})
-Schema.index({ tags: 1 }) // Only here
-```
-
-### 14. BullMQ Queue Types
-**MANDATORY**: Use type assertions for Queue constructors and Redis connections
-
-```typescript
-// ✅ CORRECT - Queue creation
-let emailQueue: Queue<EmailJobData> | null = null
-
-export function getEmailQueue(): Queue<EmailJobData> {
-  if (!emailQueue) {
-    emailQueue = new Queue(QUEUE_NAMES.EMAIL, {
-      connection: getRedis() as any, // Type assertion for Redis connection
-      ...defaultQueueOptions,
-    }) as Queue<EmailJobData>
-  }
-  return emailQueue
-}
-
-// ✅ CORRECT - Worker creation
-const emailWorker = new Worker(QUEUE_NAMES.EMAIL, processEmailJob, {
-  connection: createRedisConnection() as any, // Type assertion for Redis connection
-  concurrency: 5,
-})
-```
-
-## Full Documentation
-
-For complete details, examples, and additional rules, see `RULESETS.md` in the project root.
-
-## Build Checklist
-
-Before generating code, verify:
-- [ ] All catch blocks type errors as `unknown`
-- [ ] All Mongoose model calls use `(Model as any).method()` pattern
-- [ ] All `request.json()` and `response.json()` have type assertions
-- [ ] All Zod validations use v4-compatible syntax (`.refine()` for URLs/emails, `z.record(keyType, valueType)`)
-- [ ] No JSX in `.ts` files (use `.tsx`)
-- [ ] Better Auth imports use correct paths (`better-auth/client/plugins`)
-- [ ] IP addresses extracted from headers, not `req.ip`
-- [ ] Reduce callbacks have explicit type annotations
-- [ ] Third-party clients (Stripe, Redis, etc.) use lazy initialization
-- [ ] No duplicate Mongoose index definitions
-- [ ] BullMQ connections use type assertions
-
-**ALWAYS reference RULESETS.md for the complete, detailed rules before generating code.**
+**⚠️ CRITICAL: Always reference `RULESETS.md` for mandatory code patterns that prevent build errors, `docs/UI_UX_GUIDE.md` for design system, and `brand/brand.md` for accessibility and enterprise standards.**
 
 ---
 
-## UI/UX Documentation & Component Libraries
+## 1. Tech Stack & Engineering Standards
 
-**⚠️ CRITICAL: Always reference UI/UX documentation when building or updating UI components.**
+### Core Stack
 
-### Primary UI/UX Reference
+* **Framework:** Next.js 16 (App Router) with React Server Components (RSC) by default.
+* **Language:** TypeScript (Strict mode).
+* **Styling:** Tailwind CSS v4 (use arbitrary values only when necessary).
+* **UI Library:** Shadcn/UI (Radix Primitives) — Primary component library.
+* **Icons:** Lucide React (MANDATORY).
+* **Animation:** Framer Motion (when needed, default spring physics: `{ stiffness: 400, damping: 30 }`).
+* **Database:** Supabase (PostgreSQL).
+* **Auth:** Better Auth with PostgreSQL adapter.
+* **AI:** @google/genai (Gemini) with structured outputs (Zod schemas).
+* **State:** URL-driven state first (nuqs), server state second (React Query), local state last.
 
-**Authoritative Guide:** [UI_UX_GUIDE.md](UI_UX_GUIDE.md)
-- **Complete design system and implementation standards**
-- **Enterprise SaaS quality standards** (Stripe, Linear, Atlassian, Notion)
-- **Component patterns and usage for all features**
-- **Shadcn UI component reference (438+ components)**
-- **Typography, spacing, color system, and layout templates**
-- **Feature-specific patterns and quality checklists**
+### React 19 & Next.js 16 Modernity
 
-**ALWAYS reference UI_UX_GUIDE.md before building or modifying any UI components.**
+**⚠️ CRITICAL: Follow these React 19 patterns to avoid obsolete code generation.**
 
-### Component Libraries
+* **NO `useEffect` for data fetching**: Use Server Components + `<Suspense>`. `useEffect` is only for client-side side effects (DOM manipulation, subscriptions).
+* **NO manual memoization**: Do NOT use `useMemo`, `useCallback`, or `memo` unless profiling proves it necessary. Rely on React Compiler.
+* **Server Actions**: Use `'use server'` at the top of action files. Prefer `useActionState` (not `useFormState`) for form handling.
+* **Forms**: Use the `action` prop on `<form>` elements with Server Actions.
+* **Caching**: Use `unstable_cache` for data fetching where appropriate.
+* **Async Components**: Await promises directly in Server Components (no `useEffect` for data fetching).
 
-#### 1. Shadcn UI (Primary Component Library)
+**Examples:**
 
-**Project Standard:** Use Shadcn UI for all new components and UI updates.
+```tsx
+// ✅ CORRECT - Server Component with async
+export default async function Page() {
+  const data = await fetchData()
+  return <div>{data}</div>
+}
 
-**Documentation Sources:**
-- **Official Registry:** https://ui.shadcn.com
-- **Component Docs:** https://ui.shadcn.com/docs/components/[component-name]
-- **MCP Server:** Use `mcp_presenter-agent-ui-shadcn_*` tools to explore and view components
-- **GitHub:** https://github.com/shadcn-ui/ui
+// ✅ CORRECT - Server Action
+'use server'
+export async function createItem(formData: FormData) {
+  // Action logic
+}
 
-**Access Methods:**
-```bash
-# Via CLI
-pnpm dlx shadcn@latest add [component-name]
+// ✅ CORRECT - Form with action
+<form action={createItem}>
+  {/* Form fields */}
+</form>
 
-# Via MCP Tools (Recommended)
-# Use mcp_presenter-agent-ui-shadcn_* tools for exploration
+// ❌ WRONG - useEffect for data fetching
+'use client'
+export function Component() {
+  const [data, setData] = useState()
+  useEffect(() => {
+    fetchData().then(setData) // WRONG - use Server Component instead
+  }, [])
+}
 ```
 
-**Key Guidelines:**
-- ✅ Use Shadcn components for consistency
-- ✅ Follow component patterns from examples
-- ✅ Customize via className, not by modifying source
-- ✅ Use `size="sm"` for buttons in application context
-- ✅ Use `h-9` for inputs
-- ❌ Never modify Shadcn component source files directly
-- ❌ Never use `Loader2` (use `Spinner` from `@shadcn/spinner` instead)
+### Mandatory Code Patterns
 
-**Available Components:** 438+ components including:
-- Layout: Card, Separator, Sidebar, Breadcrumb, Tabs
-- Forms: Input, Label, Textarea, Select, Checkbox, Radio, Switch, Accordion
-- Feedback: Alert, Badge, Spinner, Skeleton, Progress, Toast
-- Data: Table, Pagination, Empty, Avatar
-- Overlays: Dialog, Drawer, Sheet, Dropdown Menu, Popover, Tooltip
-- Advanced: Command, Calendar, Chart, Carousel, Form
+**1. Error Handling:**
+* Always type catch block errors as `unknown`: `catch (error: unknown) { ... }`
 
-**See UI_UX_GUIDE.md Part III for complete component reference.**
+**2. Supabase Database:**
+* Use typed client from `@/lib/db`: `import { supabase } from "@/lib/db"`
+* Never create ad-hoc Supabase clients
 
-#### 2. Material UI (MUI) - Reference Only
+**3. Zod Validation (v4):**
+* Use `.refine()` for URL/Email validation (not `.url()` or `.email()`)
+* Use `z.record(z.string(), z.any())` for maps (not `z.record(z.any())`)
 
-**Purpose:** Reference for component patterns, accessibility standards, and design principles.
+**4. Type Safety:**
+* Explicitly type `reduce` accumulators: `reduce((sum: number, item: any) => ...)`
+* Type-assert `await request.json()` results: `const body = (await request.json()) as { ... }`
+* When using Mongoose: Use `Omit<mongoose.Document, "field">` for interface conflicts (see RULESETS.md)
 
-**Documentation Sources:**
-- **Official Docs:** https://mui.com/material-ui/
-- **Component Library:** https://mui.com/material-ui/all-components/
-- **Design Guidelines:** https://mui.com/material-ui/customization/theming/
-- **Accessibility:** https://mui.com/material-ui/customization/accessibility/
+**5. Better Auth:**
+* Use `better-auth/client/plugins` for client-side plugins (not `better-auth/react/plugins`)
 
-**Usage:**
-- Reference Material UI documentation for:
-  - Component design patterns
-  - Accessibility best practices
-  - Typography and spacing principles
-  - Form validation patterns
-  - Data table patterns
+**6. File Extensions:**
+* Always use `.tsx` for files containing JSX (never `.ts`)
 
-**Note:** This project uses **Shadcn UI** as the primary component library. Material UI serves as a reference for design patterns and best practices, not for direct component usage.
+**7. Next.js 16 Middleware:**
+* Always use `proxy.ts`, never `middleware.ts`
 
-#### 3. Chakra UI - Reference Only
+**8. IP Address Extraction:**
+* Extract IP from headers: `req.headers.get("x-forwarded-for")?.split(",")[0] || req.headers.get("x-real-ip") || "anonymous"`
+* Never use `req.ip`
 
-**Purpose:** Reference for component composition, theme system, and responsive design patterns.
+**9. Lazy Initialization:**
+* Use lazy initialization for third-party clients requiring environment variables (Stripe, Redis, Gemini, Supabase, etc.)
+* Use Proxy pattern to avoid build-time failures
 
-**Documentation Sources:**
-- **Official Docs:** https://chakra-ui.com/docs/components
-- **Component Library:** https://chakra-ui.com/docs/components
-- **Styling Guide:** https://chakra-ui.com/docs/styling
-- **Form Components:** https://chakra-ui.com/docs/form
+**10. BullMQ Queue Types:**
+* Use type assertions for Queue constructors and Redis connections: `connection: getRedis() as any`
 
-**Usage:**
-- Reference Chakra UI documentation for:
-  - Component composition patterns
-  - Theme system and customization
-  - Responsive design patterns
-  - Form component patterns
-  - Layout and grid systems
+**11. Gemini API:**
+* All Gemini calls go through `getGeminiClient()` from `lib/ai/gemini.ts`
+* Use `generateStructured()` with Zod schemas for JSON output
+* Never import `@google/genai` outside `lib/ai/gemini.ts`
 
-**Note:** This project uses **Shadcn UI** as the primary component library. Chakra UI serves as a reference for design patterns and best practices, not for direct component usage.
+**12. Stripe API Version:**
+* Use `apiVersion: "2025-02-24.acacia"` for Stripe
 
-### Documentation Reference Priority
+---
 
-**When building or updating UI components, follow this priority:**
+## 2. Project Lazarus "Void Black + Rail Purple" Design System
 
-1. **UI_UX_GUIDE.md** - Primary authoritative reference for all UI/UX decisions
-2. **Shadcn UI Documentation** - For component implementation and examples
-3. **Material UI / Chakra UI Documentation** - For design pattern references (concepts only)
+**Aesthetic**: Dark-first, glassmorphism, "Glass Brain" terminal-inspired. Deep Void Black backgrounds with Rail Purple primary and Electric Cyan accents.
 
-### Quick Reference Checklist
+### Color Palette (STRICT ENFORCEMENT)
 
-Before building any UI component, verify:
-- [ ] Reviewed UI_UX_GUIDE.md for relevant patterns
-- [ ] Checked Shadcn UI registry for available components
-- [ ] Followed typography hierarchy (text-lg for titles, text-sm for body)
-- [ ] Used correct spacing (space-y-6 for sections, space-y-4 for forms)
-- [ ] Applied proper colors (text-foreground for primary content, bg-muted/30 for cards)
-- [ ] Used Shadcn components (not custom duplicates)
-- [ ] Followed component patterns from examples
-- [ ] Validated against UI_UX_GUIDE.md checklists
+*⚠️ NEVER invent colors. Use ONLY these tokens. Reference `docs/UI_UX_GUIDE.md` for complete color system.*
 
-**ALWAYS reference UI_UX_GUIDE.md and Shadcn UI documentation before generating UI code.**
+| Role | Token | Hex / Value | Usage |
+| --- | --- | --- | --- |
+| **Background** | `bg-background` | `#0A0A0F` (Void Black) | Main canvas. **NEVER** use pure black/white. |
+| **Card Surface** | `bg-card` | `rgba(30, 30, 40, 0.4)` | Glass panels, cards. **MANDATORY** for containers. |
+| **Muted** | `bg-muted` | `rgba(30, 30, 40, 0.5)` | Secondary backgrounds, inputs. |
+| **Border** | `border-border` | `rgba(250, 250, 250, 0.1)` | Dividers, card borders. |
+| **Primary** | `text-primary` / `bg-primary` | `#6E18B3` (Rail Purple) | CTAs, primary actions. |
+| **Accent** | `text-accent` / `text-electric-cyan` | `#00E5FF` | Active states, code, intelligence. |
+| **Headings** | `text-foreground` | `#FAFAFA` (Cloud White) | H1–H3, page titles. |
+| **Body Text** | `text-foreground` | `#FAFAFA` | Primary body text. |
+| **Labels** | `text-muted-foreground` | `rgba(250, 250, 250, 0.6)` | Metadata, labels, hints. |
+
+**Brand Gradients:**
+```css
+/* Rail fade */
+background: linear-gradient(135deg, #8134CE 0%, #6E18B3 100%);
+
+/* Automation flow (hero, CTAs) */
+background: linear-gradient(90deg, #00E5FF 0%, #8134CE 50%, #6E18B3 100%);
+```
+
+**FORBIDDEN:**
+* ❌ Never use arbitrary colors like `bg-blue-500`, `text-red-400`, `#ff0000`
+* ❌ Never create custom color classes without referencing UI_UX_GUIDE.md
+* ❌ Never use Tailwind's default color palette (use design system tokens only)
+* ❌ **NEVER use `text-rail-purple` for body text.** It fails WCAG AA. Use `text-quantum-violet` or `text-electric-cyan` instead.
+
+### Typography ("Glass Brain Terminal")
+
+*Strict font family mapping — NEVER mix font roles.*
+
+| Role | Font | Usage | Classes |
+| --- | --- | --- | --- |
+| **Headings** | `font-grotesk` (Space Grotesk) | H1, H2, H3, Page Titles, Big Metrics | `font-grotesk text-lg font-semibold` (Page Title) |
+| **Body** | `font-sans` (Inter) | Paragraphs, Nav, Buttons, Inputs, UI | `font-sans text-sm text-foreground` (Default) |
+| **Code** | `font-mono` (JetBrains Mono) | Code streams, logs, IDs, Work Pane | `font-mono text-xs text-foreground` (Code) |
+
+**Typography Rules:**
+* **Page Titles**: MUST be `text-lg font-semibold` (never `text-xl`, `text-2xl`, or larger)
+* **Page Descriptions**: MUST be `text-sm text-foreground` with `mt-0.5` spacing
+* **Body Text**: MUST use `text-sm` (default) or `text-xs` (secondary) with `text-foreground`
+* **Muted Text**: ONLY for form labels, placeholder text, helper/hint text, metadata labels
+* **Never mute primary content text**
+
+**FORBIDDEN:**
+* ❌ Never use `font-sans` for headings
+* ❌ Never use `font-grotesk` for body text
+* ❌ Never use `font-sans` for code/data displays
+
+### Component Primitives
+
+*Override default Shadcn sizes for enterprise feel.*
+
+| Component | Specification | Usage |
+| --- | --- | --- |
+| **Buttons** | `size="sm"` (h-8 px-3) | **MANDATORY** in app context. Explicitly set, never omit. |
+| **Inputs** | `h-9` (text-sm) | **MANDATORY** for all inputs. Never `h-10` or default. |
+| **Cards** | `glass-card` or `bg-card border-border` | **MANDATORY**. Use `CardContent` with `pt-6`. |
+| **Icons** | Navigation: `h-4 w-4`, Buttons: `h-3.5 w-3.5` | Lucide React only. |
+| **Gradients** | `bg-rail-fade`, `bg-automation-flow` | Primary brand moments, CTAs. |
+
+### Spacing System
+
+*4px base unit (0.25rem). Reference `docs/UI_UX_GUIDE.md`.*
+
+| Level | Spacing | Usage |
+| --- | --- | --- |
+| **Page Container** | `space-y-6 py-6` | **MANDATORY** for page-level. Never larger. |
+| **Section** | `space-y-4` | Cards, tables, content sections. |
+| **Form** | `space-y-2` or `space-y-3` | Form fields. Never `space-y-4`. |
+| **Component** | `p-4` or `p-6` | Card padding. |
+
+---
+
+## 3. Master Application Shell
+
+**⚠️ CRITICAL: The Master Application Shell is already implemented. All dashboard pages automatically inherit the shell structure.**
+
+### Shell Components
+
+The dashboard layout (`app/(dashboard)/layout.tsx`) provides:
+
+1. **Sidebar** (`components/layout/sidebar.tsx`)
+   - Fixed left, `w-64` (256px) — **MANDATORY**
+   - Logo + "Project Lazarus" in `font-grotesk`
+   - Navigation: Projects, New Project, Billing, Settings
+   - Active: `bg-sidebar-accent text-electric-cyan`
+   - Inactive: `text-muted-foreground hover:bg-sidebar-accent/50`
+   - User dropdown at bottom
+
+2. **Main Content**
+   - Offset by sidebar, full width on mobile
+   - `flex-1 overflow-y-auto p-6`
+   - Background: `bg-void-black`
+
+### Usage Pattern
+
+**Dashboard pages DO NOT need to create their own layout.**
+
+```tsx
+// ✅ CORRECT - Page content only
+export default function MyPage() {
+  return (
+    <div className="space-y-6 py-6">
+      {/* Page content - shell is already provided */}
+    </div>
+  )
+}
+
+// ❌ WRONG - Don't recreate sidebar
+export default function MyPage() {
+  return (
+    <div>
+      <aside>...</aside> {/* WRONG - already in layout */}
+    </div>
+  )
+}
+```
+
+### Adding Navigation Items
+
+Update `components/layout/sidebar.tsx`:
+
+```tsx
+const navItems = [
+  // ... existing items
+  { label: "New Page", icon: IconName, href: "/new-page", match: (path) => path.startsWith("/new-page") },
+]
+```
+
+---
+
+## 4. The "Golden Page" Pattern
+
+*Use this exact structure for all dashboard pages.*
+
+```tsx
+import { Suspense } from "react"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Button } from "@/components/ui/button"
+import { Plus } from "lucide-react"
+import { DataList } from "./_components/data-list"
+
+export default function Page() {
+  return (
+    <div className="space-y-6 py-6">
+      <div className="flex items-center justify-between">
+        <div className="space-y-1">
+          <h1 className="font-grotesk text-lg font-semibold text-foreground">Page Title</h1>
+          <p className="text-sm text-foreground mt-0.5">
+            Clear, concise description of what this page does.
+          </p>
+        </div>
+        <Button size="sm">
+          <Plus className="mr-2 h-3.5 w-3.5" />
+          Action
+        </Button>
+      </div>
+
+      <div className="space-y-4">
+        <Suspense fallback={<Skeleton className="h-[200px] w-full glass-card" />}>
+          <DataList />
+        </Suspense>
+      </div>
+    </div>
+  )
+}
+```
+
+**Key Requirements:**
+* Use `space-y-6 py-6` for page container
+* Use `font-grotesk` for page title
+* Use `text-lg font-semibold` for title (never larger)
+* Use `text-sm text-foreground` for description with `mt-0.5` (primary content—never muted)
+* Always wrap data fetching in `<Suspense>` with Skeleton fallback
+* Use Server Components by default
+
+---
+
+## 5. Project Lazarus UI Patterns
+
+### Project Card
+
+```tsx
+<Card className="glass-card hover:glow-purple transition-all">
+  <CardContent className="pt-6">
+    <div className="flex items-start justify-between">
+      <div className="space-y-1">
+        <h3 className="font-grotesk text-sm font-medium text-foreground">Project Name</h3>
+        <p className="text-xs text-muted-foreground line-clamp-2">Description</p>
+      </div>
+      <Badge variant="outline" className="text-[10px]">ready</Badge>
+    </div>
+    <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
+      <span>Confidence: 85%</span>
+    </div>
+  </CardContent>
+</Card>
+```
+
+### Glass Brain Panes
+
+*Plan Pane, Work Pane, Thoughts Pane — use `glass-panel` or `glass-card`.*
+
+```tsx
+<div className="glass-panel rounded-lg border border-border overflow-hidden">
+  <div className="flex items-center justify-between px-4 py-2 border-b border-border">
+    <span className="text-xs font-medium text-muted-foreground">Pane Title</span>
+  </div>
+  <div className="p-4 font-mono text-xs text-foreground overflow-x-auto">
+    {/* Content */}
+  </div>
+</div>
+```
+
+### Confidence Gauge
+
+*Use `font-grotesk` for the percentage, rail-purple/electric-cyan for active states.*
+
+### Thought Signatures
+
+*Use `font-sans text-sm text-foreground` for thought summary text.*
+
+---
+
+## 6. Micro-Interactions & Polish
+
+1. **Hover States**: Cards: `hover:glow-purple` or `glass-card:hover`. Keep enterprise aesthetic.
+
+2. **Loading States**: **MANDATORY**: Use Skeleton loaders (`<Skeleton />`). Use `Spinner` from `@shadcn/spinner` instead of `Loader2`.
+
+3. **Motion**: Fade in: `animate-fade-in`. Spring: `{ stiffness: 400, damping: 30 }`. Keep subtle.
+
+4. **Accessibility**: All inputs must have `<Label>` or `aria-label`. All images must have `alt` text. Icon-only buttons must have `aria-label`. Focus: `focus-visible:ring-2 focus-visible:ring-ring`. Support `prefers-reduced-motion` (see `brand/brand.md`).
+
+---
+
+## 7. 🛑 Hard Stops (Auto-Reject Code)
+
+1. **No `useEffect` for data fetching**: Use Server Components + Suspense.
+
+2. **No `bg-white` or `bg-black`**: Use `bg-card` or `bg-background`.
+
+3. **No arbitrary colors**: Use design system tokens only. Never `bg-blue-500`, `text-red-400`.
+
+4. **No default buttons**: Always specify `size="sm"` explicitly.
+
+5. **No `Loader2`**: Use `Spinner` from `@shadcn/spinner` or `<Skeleton />`.
+
+6. **No `font-sans` for headings**: Always use `font-grotesk`.
+
+7. **No `font-grotesk` for code/data**: Always use `font-mono`.
+
+8. **No `h-10` inputs**: Always use `h-9`.
+
+9. **No manual memoization without profiling**: React Compiler handles this.
+
+10. **No page titles larger than `text-lg`**: Page titles must be `text-lg font-semibold`.
+
+11. **No ad-hoc Supabase clients**: Use `supabase` from `@/lib/db`.
+
+12. **No `@google/genai` outside `lib/ai/gemini.ts`**: Use `getGeminiClient()` only.
+
+---
+
+## 8. Implementation Checklist
+
+*Before outputting code, verify:*
+
+**Design System:**
+- [ ] Background is `bg-background` (`#0A0A0F`)
+- [ ] Cards use `glass-card` or `bg-card border-border`
+- [ ] Headings use `font-grotesk` (Space Grotesk)
+- [ ] Body text uses `font-sans` (Inter) with `text-foreground`
+- [ ] Code uses `font-mono` (JetBrains Mono)
+- [ ] Page title is `text-lg font-semibold`
+- [ ] Only design system colors used
+
+**Components:**
+- [ ] Buttons use `size="sm"` explicitly
+- [ ] Inputs use `h-9`
+- [ ] Icons use Lucide React
+- [ ] Cards use `CardContent` with `pt-6`
+- [ ] Dashboard pages don't recreate sidebar
+
+**Code Quality:**
+- [ ] Data fetching in Server Component with Suspense (no `useEffect`)
+- [ ] No manual memoization (unless profiled)
+- [ ] Supabase via `@/lib/db`
+- [ ] Catch blocks type errors as `unknown`
+- [ ] Third-party clients use lazy initialization
+- [ ] Gemini via `getGeminiClient()` only
+
+**States & UX:**
+- [ ] Skeleton loaders for loading states
+- [ ] Empty states with appropriate CTAs
+- [ ] Error states with proper styling
+
+**Accessibility (WCAG AA):**
+- [ ] All inputs have `<Label>` or `aria-label`
+- [ ] All images have descriptive `alt` text
+- [ ] Icon-only buttons have `aria-label`
+- [ ] Interactive elements keyboard navigable
+- [ ] Focus states visible (`focus-visible:ring-ring`)
+- [ ] No `text-rail-purple` on readable text
+
+---
+
+**Priority Order for References:**
+1. **RULESETS.md** — Mandatory code patterns (prevents build errors)
+2. **docs/UI_UX_GUIDE.md** — Complete design system documentation
+3. **This file** — Production rules and patterns
+4. **Shadcn UI Documentation** — Component implementation examples
+
+**When guidelines conflict, prioritize RULESETS.md for code patterns and UI_UX_GUIDE.md for design decisions.**

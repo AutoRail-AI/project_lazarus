@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import { stripe } from "@/lib/billing/stripe"
-import { connectDB } from "@/lib/db/mongoose"
-import type { ISubscription } from "@/lib/models/billing"
+import { supabase } from "@/lib/db"
+import type { Database, PlanId } from "@/lib/db/types"
 import { triggerWebhook } from "@/lib/webhooks/manager"
+
+type SubscriptionInsert = Database["public"]["Tables"]["subscriptions"]["Insert"]
 
 export async function POST(req: NextRequest) {
   const body = await req.text()
@@ -19,31 +21,29 @@ export async function POST(req: NextRequest) {
       process.env.STRIPE_WEBHOOK_SECRET
     )
 
-    await connectDB()
-
     switch (event.type) {
       case "customer.subscription.created":
       case "customer.subscription.updated": {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const subscription = event.data.object as any
-        const { Subscription } = await import("@/lib/models/billing")
-        const updateData: Partial<ISubscription> = {
-          userId: subscription.metadata?.userId || "",
-          stripeCustomerId: subscription.customer as string,
-          stripePriceId: subscription.items.data[0]?.price.id as string,
-          status: subscription.status as ISubscription["status"],
-          currentPeriodStart: new Date(subscription.current_period_start * 1000),
-          currentPeriodEnd: new Date(subscription.current_period_end * 1000),
-          cancelAtPeriodEnd: subscription.cancel_at_period_end as boolean,
-          planId: getPlanIdFromPriceId(subscription.items.data[0]?.price.id as string),
+
+        const payload: SubscriptionInsert = {
+          user_id: subscription.metadata?.userId || "",
+          org_id: subscription.metadata?.organizationId || null,
+          stripe_customer_id: subscription.customer as string,
+          stripe_subscription_id: subscription.id,
+          stripe_price_id: subscription.items.data[0]?.price.id as string,
+          status: mapStripeStatus(subscription.status),
+          current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
+          current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+          cancel_at_period_end: subscription.cancel_at_period_end as boolean,
+          plan_id: getPlanIdFromPriceId(subscription.items.data[0]?.price.id as string),
+          updated_at: new Date().toISOString(),
         }
-        
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        await (Subscription as any).findOneAndUpdate(
-          { stripeSubscriptionId: subscription.id },
-          updateData,
-          { upsert: true, new: true }
-        )
+
+        await (supabase as any).from("subscriptions").upsert(payload, {
+          onConflict: "stripe_subscription_id",
+        })
 
         await triggerWebhook(
           "subscription.updated",
@@ -56,13 +56,11 @@ export async function POST(req: NextRequest) {
       case "customer.subscription.deleted": {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const subscription = event.data.object as any
-        const { Subscription } = await import("@/lib/models/billing")
         
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        await (Subscription as any).findOneAndUpdate(
-          { stripeSubscriptionId: subscription.id },
-          { status: "canceled" }
-        )
+        await (supabase as any)
+          .from("subscriptions")
+          .update({ status: "canceled", updated_at: new Date().toISOString() })
+          .eq("stripe_subscription_id", subscription.id)
 
         await triggerWebhook(
           "subscription.cancelled",
@@ -107,9 +105,23 @@ export async function POST(req: NextRequest) {
   }
 }
 
-function getPlanIdFromPriceId(priceId: string): "free" | "pro" | "enterprise" {
+function mapStripeStatus(
+  status: string
+): "active" | "canceled" | "past_due" | "trialing" | "incomplete" {
+  const valid: Array<"active" | "canceled" | "past_due" | "trialing" | "incomplete"> = [
+    "active",
+    "canceled",
+    "past_due",
+    "trialing",
+    "incomplete",
+  ]
+  return valid.includes(status as (typeof valid)[number])
+    ? (status as (typeof valid)[number])
+    : "incomplete"
+}
+
+function getPlanIdFromPriceId(priceId: string): PlanId {
   if (priceId === process.env.STRIPE_PRICE_ID_PRO) return "pro"
   if (priceId === process.env.STRIPE_PRICE_ID_ENTERPRISE) return "enterprise"
   return "free"
 }
-

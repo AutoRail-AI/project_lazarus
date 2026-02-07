@@ -1,7 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
+import { Separator } from "@/components/ui/separator"
 import { Spinner } from "@/components/ui/spinner"
 import { signIn } from "@/lib/auth/client"
 
@@ -29,34 +30,53 @@ function GoogleIcon({ className }: { className?: string }) {
   )
 }
 
-interface OAuthButtonsProps {
-  mode?: "login" | "register"
+interface OAuthProviders {
+  google: boolean
 }
 
-export function OAuthButtons({ mode = "login" }: OAuthButtonsProps) {
+interface OAuthButtonsProps {
+  mode?: "login" | "register"
+  /** When true (default), renders "Or continue with email" divider below OAuth buttons */
+  showDivider?: boolean
+}
+
+export function OAuthButtons({ mode = "login", showDivider = true }: OAuthButtonsProps) {
+  const [providers, setProviders] = useState<OAuthProviders | null>(null)
   const [isGoogleLoading, setIsGoogleLoading] = useState(false)
+
+  useEffect(() => {
+    fetch("/api/auth/providers")
+      .then((res) => res.json())
+      .then((data) => setProviders(data as OAuthProviders))
+      .catch(() => setProviders({ google: false }))
+  }, [])
 
   const handleGoogleSignIn = async () => {
     setIsGoogleLoading(true)
     try {
       await signIn.social({
         provider: "google",
-        callbackURL: "/",
+        callbackURL: "/dashboard",
       })
-    } catch (error) {
-      console.error("Google sign-in error:", error)
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error)
+      console.error("Google sign-in error:", message)
     } finally {
       setIsGoogleLoading(false)
     }
   }
 
+  if (providers?.google !== true) {
+    return null
+  }
+
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       <Button
         type="button"
         variant="outline"
         size="sm"
-        className="w-full"
+        className="w-full bg-secondary/50 border-input hover:bg-secondary hover:text-secondary-foreground transition-all duration-200"
         onClick={handleGoogleSignIn}
         disabled={isGoogleLoading}
       >
@@ -67,6 +87,18 @@ export function OAuthButtons({ mode = "login" }: OAuthButtonsProps) {
         )}
         {mode === "login" ? "Sign in with Google" : "Sign up with Google"}
       </Button>
+      {showDivider && (
+        <div className="relative">
+          <div className="absolute inset-0 flex items-center">
+            <Separator className="w-full" />
+          </div>
+          <div className="relative flex justify-center text-xs uppercase">
+            <span className="bg-background px-2 text-muted-foreground">
+              Or continue with email
+            </span>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -1,93 +1,50 @@
-import mongoose, { Schema } from "mongoose"
-import { connectDB } from "@/lib/db/mongoose"
+import { supabase } from "@/lib/db"
+import type { Database, NotificationType } from "@/lib/db/types"
 import { queueEmail } from "@/lib/queue"
 
-export type NotificationType =
-  | "info"
-  | "success"
-  | "warning"
-  | "error"
-  | "invitation"
-  | "mention"
-  | "system"
+export type Notification = Database["public"]["Tables"]["notifications"]["Row"]
 
-export interface INotification extends mongoose.Document {
+// Create notification
+export async function createNotification(data: {
   userId: string
   organizationId?: string
   type: NotificationType
   title: string
   message: string
   link?: string
-  read: boolean
-  readAt?: Date
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   metadata?: Record<string, any>
-  createdAt: Date
-}
+  sendEmail?: boolean
+}): Promise<Notification | null> {
+  const { data: notification, error } = await (supabase as any)
+    .from("notifications")
+    .insert({
+      user_id: data.userId,
+      organization_id: data.organizationId,
+      type: data.type,
+      title: data.title,
+      message: data.message,
+      link: data.link,
+      metadata: data.metadata,
+      read: false,
+    })
+    .select()
+    .single()
 
-const NotificationSchema = new Schema<INotification>(
-  {
-    userId: { type: String, required: true, index: true },
-    organizationId: { type: String, index: true },
-    type: {
-      type: String,
-      enum: ["info", "success", "warning", "error", "invitation", "mention", "system"],
-      required: true,
-      index: true,
-    },
-    title: { type: String, required: true },
-    message: { type: String, required: true },
-    link: { type: String },
-    read: { type: Boolean, default: false, index: true },
-    readAt: { type: Date },
-    metadata: { type: Schema.Types.Mixed },
-  },
-  { timestamps: true }
-)
-
-// Indexes
-NotificationSchema.index({ userId: 1, read: 1, createdAt: -1 })
-NotificationSchema.index({ organizationId: 1, createdAt: -1 })
-
-export const Notification =
-  mongoose.models.Notification ||
-  mongoose.model<INotification>("Notification", NotificationSchema)
-
-// Create notification
-export async function createNotification(
-  data: {
-    userId: string
-    organizationId?: string
-    type: NotificationType
-    title: string
-    message: string
-    link?: string
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    metadata?: Record<string, any>
-    sendEmail?: boolean
+  if (error) {
+    console.error("Failed to create notification:", error)
+    return null
   }
-): Promise<INotification> {
-  await connectDB()
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const notification = await (Notification as any).create({
-    userId: data.userId,
-    organizationId: data.organizationId,
-    type: data.type,
-    title: data.title,
-    message: data.message,
-    link: data.link,
-    metadata: data.metadata,
-    read: false,
-  })
 
   // Send email if requested
   if (data.sendEmail) {
-    // Get user email from Better Auth
-    const { prisma } = await import("@/lib/db/prisma")
-    const user = await prisma.user.findUnique({
-      where: { id: data.userId },
-    })
+    // Get user email from Better Auth table (assuming 'user' table exists)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: user } = await (supabase as any)
+      .from("user")
+      .select("email")
+      .eq("id", data.userId)
+      .single()
 
     if (user?.email) {
       await queueEmail({
@@ -113,22 +70,29 @@ export async function getNotifications(
     limit?: number
     organizationId?: string
   } = {}
-): Promise<INotification[]> {
-  await connectDB()
+): Promise<Notification[]> {
+  let query = (supabase as any)
+    .from("notifications")
+    .select("*")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(options.limit || 50)
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const query: any = { userId }
   if (options.unreadOnly) {
-    query.read = false
+    query = query.eq("read", false)
   }
   if (options.organizationId) {
-    query.organizationId = options.organizationId
+    query = query.eq("organization_id", options.organizationId)
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (Notification as any).find(query)
-    .sort({ createdAt: -1 })
-    .limit(options.limit || 50)
+  const { data, error } = await query
+
+  if (error) {
+    console.error("Failed to fetch notifications:", error)
+    return []
+  }
+
+  return data
 }
 
 // Mark as read
@@ -136,13 +100,15 @@ export async function markAsRead(
   notificationId: string,
   userId: string
 ): Promise<void> {
-  await connectDB()
+  const { error } = await (supabase as any)
+    .from("notifications")
+    .update({ read: true })
+    .eq("id", notificationId)
+    .eq("user_id", userId)
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await (Notification as any).findOneAndUpdate(
-    { _id: notificationId, userId },
-    { read: true, readAt: new Date() }
-  )
+  if (error) {
+    console.error("Failed to mark notification as read:", error)
+  }
 }
 
 // Mark all as read
@@ -150,19 +116,21 @@ export async function markAllAsRead(
   userId: string,
   organizationId?: string
 ): Promise<void> {
-  await connectDB()
+  let query = (supabase as any)
+    .from("notifications")
+    .update({ read: true })
+    .eq("user_id", userId)
+    .eq("read", false)
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const query: any = { userId, read: false }
   if (organizationId) {
-    query.organizationId = organizationId
+    query = query.eq("organization_id", organizationId)
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await (Notification as any).updateMany(query, {
-    read: true,
-    readAt: new Date(),
-  })
+  const { error } = await query
+
+  if (error) {
+    console.error("Failed to mark all notifications as read:", error)
+  }
 }
 
 // Get unread count
@@ -170,15 +138,22 @@ export async function getUnreadCount(
   userId: string,
   organizationId?: string
 ): Promise<number> {
-  await connectDB()
+  let query = (supabase as any)
+    .from("notifications")
+    .select("*", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .eq("read", false)
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const query: any = { userId, read: false }
   if (organizationId) {
-    query.organizationId = organizationId
+    query = query.eq("organization_id", organizationId)
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (Notification as any).countDocuments(query)
-}
+  const { count, error } = await query
 
+  if (error) {
+    console.error("Failed to get unread count:", error)
+    return 0
+  }
+
+  return count || 0
+}

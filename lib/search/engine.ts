@@ -1,78 +1,42 @@
-import mongoose, { Schema } from "mongoose"
-import { connectDB } from "@/lib/db/mongoose"
+import { supabase } from "@/lib/db"
+import type { Database } from "@/lib/db/types"
 
-export interface ISearchIndex extends mongoose.Document {
+export type SearchIndex = Database["public"]["Tables"]["search_index"]["Row"]
+
+// Index a document
+export async function indexDocument(data: {
   organizationId?: string
-  resource: string // e.g., "project", "document", "ai_agent"
+  resource: string
   resourceId: string
   title: string
   content: string
   tags?: string[]
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   metadata?: Record<string, any>
-  createdAt: Date
-  updatedAt: Date
-}
+}): Promise<SearchIndex | null> {
+  const { data: indexed, error } = await (supabase as any)
+    .from("search_index")
+    .upsert(
+      {
+        organization_id: data.organizationId,
+        resource: data.resource,
+        resource_id: data.resourceId,
+        title: data.title,
+        content: data.content,
+        tags: data.tags,
+        metadata: data.metadata,
+      },
+      { onConflict: "resource,resource_id" }
+    )
+    .select()
+    .single()
 
-const SearchIndexSchema = new Schema<ISearchIndex>(
-  {
-    organizationId: { type: String, index: true },
-    resource: { type: String, required: true, index: true },
-    resourceId: { type: String, required: true, index: true },
-    title: { type: String, required: true },
-    content: { type: String, required: true },
-    tags: [{ type: String, index: true }],
-    metadata: { type: Schema.Types.Mixed },
-  },
-  { timestamps: true }
-)
-
-// Text index for full-text search
-SearchIndexSchema.index({
-  title: "text",
-  content: "text",
-  tags: "text",
-})
-
-// Compound index
-SearchIndexSchema.index({ organizationId: 1, resource: 1 })
-
-export const SearchIndex =
-  mongoose.models.SearchIndex ||
-  mongoose.model<ISearchIndex>("SearchIndex", SearchIndexSchema)
-
-// Index a document
-export async function indexDocument(
-  data: {
-    organizationId?: string
-    resource: string
-    resourceId: string
-    title: string
-    content: string
-    tags?: string[]
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    metadata?: Record<string, any>
+  if (error) {
+    console.error("Failed to index document:", error)
+    return null
   }
-): Promise<ISearchIndex> {
-  await connectDB()
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (SearchIndex as any).findOneAndUpdate(
-    {
-      resource: data.resource,
-      resourceId: data.resourceId,
-    },
-    {
-      organizationId: data.organizationId,
-      resource: data.resource,
-      resourceId: data.resourceId,
-      title: data.title,
-      content: data.content,
-      tags: data.tags,
-      metadata: data.metadata,
-    },
-    { upsert: true, new: true }
-  )
+  return indexed
 }
 
 // Remove from index
@@ -80,10 +44,15 @@ export async function removeFromIndex(
   resource: string,
   resourceId: string
 ): Promise<void> {
-  await connectDB()
+  const { error } = await (supabase as any)
+    .from("search_index")
+    .delete()
+    .eq("resource", resource)
+    .eq("resource_id", resourceId)
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await (SearchIndex as any).deleteOne({ resource, resourceId })
+  if (error) {
+    console.error("Failed to remove from index:", error)
+  }
 }
 
 // Search
@@ -95,28 +64,9 @@ export async function search(
     tags?: string[]
     limit?: number
   } = {}
-): Promise<ISearchIndex[]> {
-  await connectDB()
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const searchQuery: any = {
-    $text: { $search: query },
-  }
-
-  if (options.organizationId) {
-    searchQuery.organizationId = options.organizationId
-  }
-  if (options.resource) {
-    searchQuery.resource = options.resource
-  }
-  if (options.tags && options.tags.length > 0) {
-    searchQuery.tags = { $in: options.tags }
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (SearchIndex as any).find(searchQuery, { score: { $meta: "textScore" } })
-    .sort({ score: { $meta: "textScore" } })
-    .limit(options.limit || 20)
+): Promise<SearchIndex[]> {
+  // Use simple search logic since we haven't set up full text search indexes in Postgres yet
+  return simpleSearch(query, options)
 }
 
 // Simple text search (fallback if text index not available)
@@ -125,29 +75,32 @@ export async function simpleSearch(
   options: {
     organizationId?: string
     resource?: string
+    tags?: string[]
     limit?: number
   } = {}
-): Promise<ISearchIndex[]> {
-  await connectDB()
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const searchQuery: any = {
-    $or: [
-      { title: { $regex: query, $options: "i" } },
-      { content: { $regex: query, $options: "i" } },
-    ],
-  }
+): Promise<SearchIndex[]> {
+  let dbQuery = (supabase as any)
+    .from("search_index")
+    .select("*")
+    .or(`title.ilike.%${query}%,content.ilike.%${query}%`)
+    .limit(options.limit || 20)
 
   if (options.organizationId) {
-    searchQuery.organizationId = options.organizationId
+    dbQuery = dbQuery.eq("organization_id", options.organizationId)
   }
   if (options.resource) {
-    searchQuery.resource = options.resource
+    dbQuery = dbQuery.eq("resource", options.resource)
+  }
+  if (options.tags && options.tags.length > 0) {
+    dbQuery = dbQuery.contains("tags", options.tags)
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (SearchIndex as any).find(searchQuery)
-    .sort({ createdAt: -1 })
-    .limit(options.limit || 20)
-}
+  const { data, error } = await dbQuery
 
+  if (error) {
+    console.error("Failed to search:", error)
+    return []
+  }
+
+  return data
+}

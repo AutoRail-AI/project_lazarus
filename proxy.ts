@@ -7,6 +7,8 @@ const protectedRoutes: string[] = [
   "/settings",
   "/billing",
   "/admin",
+  "/projects",
+  "/teams",
 ]
 
 // Routes that should redirect to home if already authenticated
@@ -40,7 +42,7 @@ export function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl)
   }
 
-  // Redirect authenticated users from auth routes to home (or onboarding)
+  // Redirect authenticated users from auth routes to app (root will redirect to /dashboard or /onboarding)
   if (isAuthRoute && isAuthenticated) {
     return NextResponse.redirect(new URL("/", request.url))
   }

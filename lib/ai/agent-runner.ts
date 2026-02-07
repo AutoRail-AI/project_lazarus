@@ -1,18 +1,30 @@
 import { OpenAI } from "openai"
-import type { AgentConfig, AgentMessage, AgentState, AgentTool, ToolCall } from "./types"
+import { getGeminiClient } from "./gemini"
+import type {
+  AgentConfig,
+  AgentMessage,
+  AgentState,
+  AgentTool,
+  ToolCall,
+} from "./types"
 
 export class AgentRunner {
-  private client: OpenAI
+  private openaiClient: OpenAI | null = null
   private config: AgentConfig
   private tools: Map<string, AgentTool>
+  private useGemini: boolean
 
   constructor(config: AgentConfig) {
     this.config = config
-    this.client = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    })
-    this.tools = new Map()
+    this.useGemini = !!process.env.GEMINI_API_KEY
     
+    if (!this.useGemini && process.env.OPENAI_API_KEY) {
+      this.openaiClient = new OpenAI({
+        apiKey: process.env.OPENAI_API_KEY,
+      })
+    }
+    
+    this.tools = new Map()
     if (config.tools) {
       config.tools.forEach(tool => {
         this.tools.set(tool.name, tool)
@@ -21,9 +33,64 @@ export class AgentRunner {
   }
 
   async run(state: AgentState): Promise<AgentState> {
+    if (this.useGemini) {
+      return this.runWithGemini(state)
+    } else if (this.openaiClient) {
+      return this.runWithOpenAI(state)
+    } else {
+      throw new Error("No AI provider configured (GEMINI_API_KEY or OPENAI_API_KEY required)")
+    }
+  }
+
+  private async runWithGemini(state: AgentState): Promise<AgentState> {
+    const client = getGeminiClient()
+    const prompt = this.buildPromptString(state)
+
+    const responseText = await client.generateText(prompt)
+
+    const newMessage: AgentMessage = {
+      role: "assistant",
+      content: responseText,
+      timestamp: new Date(),
+    }
+
+    return {
+      ...state,
+      messages: [...state.messages, newMessage],
+    }
+  }
+
+  private buildPromptString(state: AgentState): string {
+    let prompt = ""
+    
+    if (this.config.systemPrompt) {
+      prompt += `System: ${this.config.systemPrompt}\n\n`
+    }
+
+    state.messages.forEach(msg => {
+      prompt += `${msg.role === "user" ? "User" : "Assistant"}: ${msg.content}\n`
+      if (msg.toolCalls) {
+        msg.toolCalls.forEach(tc => {
+          prompt += `Tool Call: ${tc.name}(${JSON.stringify(tc.arguments)})\n`
+        })
+      }
+      if (msg.toolResults) {
+        msg.toolResults.forEach(tr => {
+          prompt += `Tool Result: ${JSON.stringify(tr.result || tr.error)}\n`
+        })
+      }
+    })
+
+    prompt += "\nAssistant:"
+    return prompt
+  }
+
+  private async runWithOpenAI(state: AgentState): Promise<AgentState> {
+    if (!this.openaiClient) throw new Error("OpenAI client not initialized")
+
     const messages = this.formatMessages(state.messages)
     
-    const response = await this.client.chat.completions.create({
+    const response = await this.openaiClient.chat.completions.create({
       model: this.config.model,
       messages,
       tools: this.formatTools(),
@@ -155,4 +222,3 @@ export class AgentRunner {
     }))
   }
 }
-

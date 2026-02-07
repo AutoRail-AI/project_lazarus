@@ -6,9 +6,11 @@ export {
   getEmailQueue,
   getProcessingQueue,
   getWebhooksQueue,
+  getProjectProcessingQueue,
   queueEmail,
   queueProcessing,
   queueWebhook,
+  queueProjectProcessing,
   closeAllQueues,
 } from "./queues"
 
@@ -21,6 +23,7 @@ export {
   type QueueName,
   type EmailJobData,
   type ProcessingJobData,
+  type ProjectProcessingJobData,
   type WebhookJobData,
   type JobData,
   type JobResult,

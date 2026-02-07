@@ -1,21 +1,11 @@
 import { betterAuth } from "better-auth"
-import { prismaAdapter } from "better-auth/adapters/prisma"
 import { organization } from "better-auth/plugins"
+import { Pool } from "pg"
 import { Resend } from "resend"
+import dns from "node:dns"
 
-// Lazy import prisma to allow Better Auth CLI to read config without Prisma client
-function getPrisma() {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const prismaModule = require("@/lib/db/prisma")
-    return prismaModule.prisma
-  } catch {
-    // Prisma not available yet - Better Auth CLI will handle this
-    return null
-  }
-}
-
-const prisma = getPrisma()
+// Prefer IPv4 when connecting to Supabase/Postgres (avoids ECONNREFUSED on IPv6-only resolutions)
+dns.setDefaultResultOrder("ipv4first")
 
 // Lazy Resend client
 function getResendClient(): Resend | null {
@@ -26,22 +16,19 @@ function getResendClient(): Resend | null {
 
 // Email sender configuration
 const getEmailFrom = () =>
-  process.env.EMAIL_FROM || "AppealGen AI <noreply@appealgen.ai>"
+  process.env.EMAIL_FROM || "Project Lazarus <noreply@projectlazarus.ai>"
 
-// Build auth config - conditionally include database adapter
-const authConfig: Parameters<typeof betterAuth>[0] = {
-  // Database adapter - Using Prisma with MongoDB
-  // Only include if prisma is available (after client generation)
-  ...(prisma ? {
-    database: prismaAdapter(prisma, {
-      provider: "mongodb",
-    }),
-  } : {}),
+// Build auth config (database is set dynamically in getAuth - see below)
+function buildAuthConfig(database: Parameters<typeof betterAuth>[0]["database"]) {
+  return {
+    database,
 
   // App configuration
-  appName: "AppealGen AI",
+  appName: "Project Lazarus",
   baseURL: process.env.BETTER_AUTH_URL || "http://localhost:3000",
-  secret: process.env.BETTER_AUTH_SECRET || "development-secret-change-in-production-min-32-chars",
+  secret:
+    process.env.BETTER_AUTH_SECRET ||
+    "development-secret-change-in-production-min-32-chars",
 
   // Plugins
   plugins: [
@@ -51,18 +38,21 @@ const authConfig: Parameters<typeof betterAuth>[0] = {
       organizationLimit: parseInt(process.env.ORGANIZATION_LIMIT || "5", 10),
       membershipLimit: parseInt(process.env.MEMBERSHIP_LIMIT || "100", 10),
       creatorRole: "owner",
-      
+
       // Invitation email handler
       async sendInvitationEmail(data) {
         const resend = getResendClient()
         if (!resend) {
           console.warn("Resend not configured, skipping invitation email")
-          console.log("Invitation link:", `${process.env.BETTER_AUTH_URL}/accept-invitation/${data.id}`)
+          console.log(
+            "Invitation link:",
+            `${process.env.BETTER_AUTH_URL}/accept-invitation/${data.id}`
+          )
           return
         }
 
         const inviteLink = `${process.env.BETTER_AUTH_URL}/accept-invitation/${data.id}`
-        
+
         try {
           await resend.emails.send({
             from: getEmailFrom(),
@@ -76,26 +66,26 @@ const authConfig: Parameters<typeof betterAuth>[0] = {
                   <meta name="viewport" content="width=device-width, initial-scale=1.0">
                   <title>Organization Invitation</title>
                 </head>
-                <body style="font-family: 'Poppins', Arial, sans-serif; margin: 0; padding: 0; background-color: #f4f4f5;">
-                  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f4f4f5; padding: 40px 20px;">
+                <body style="font-family: 'Inter', Arial, sans-serif; margin: 0; padding: 0; background-color: #0A0A0F; color: #FAFAFA;">
+                  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #0A0A0F; padding: 40px 20px;">
                     <tr>
                       <td align="center">
-                        <table width="100%" max-width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                        <table width="100%" max-width="600" cellpadding="0" cellspacing="0" style="background-color: #1E1E28; border-radius: 12px; border: 1px solid rgba(250, 250, 250, 0.1);">
                           <tr>
-                            <td style="background: linear-gradient(135deg, #559EFF 0%, #0065BA 100%); padding: 32px; border-radius: 8px 8px 0 0; text-align: center;">
-                              <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 600;">Organization Invitation</h1>
+                            <td style="background: linear-gradient(135deg, #8134CE 0%, #6E18B3 100%); padding: 32px; border-radius: 12px 12px 0 0; text-align: center;">
+                              <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 600; font-family: 'Space Grotesk', sans-serif;">Project Lazarus</h1>
                             </td>
                           </tr>
                           <tr>
                             <td style="padding: 40px 32px;">
-                              <h2 style="color: #001320; margin: 0 0 16px 0; font-size: 20px; font-weight: 600;">You've been invited!</h2>
-                              <p style="color: #52525b; margin: 0 0 24px 0; font-size: 16px; line-height: 1.6;">
+                              <h2 style="color: #FAFAFA; margin: 0 0 16px 0; font-size: 20px; font-weight: 600;">You've been invited!</h2>
+                              <p style="color: #A1A1AA; margin: 0 0 24px 0; font-size: 16px; line-height: 1.6;">
                                 ${data.inviter.user.name || data.inviter.user.email} invited you to join <strong>${data.organization.name}</strong>.
                               </p>
                               <table width="100%" cellpadding="0" cellspacing="0">
                                 <tr>
                                   <td align="center" style="padding: 16px 0;">
-                                    <a href="${inviteLink}" style="display: inline-block; background-color: #568AFF; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 6px; font-size: 16px; font-weight: 600;">
+                                    <a href="${inviteLink}" style="display: inline-block; background-color: #6E18B3; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 6px; font-size: 16px; font-weight: 600;">
                                       Accept Invitation
                                     </a>
                                   </td>
@@ -146,7 +136,7 @@ const authConfig: Parameters<typeof betterAuth>[0] = {
         await resend.emails.send({
           from: getEmailFrom(),
           to: user.email,
-          subject: "Verify your AppealGen AI account",
+          subject: "Verify your Project Lazarus account",
           html: `
             <!DOCTYPE html>
             <html>
@@ -155,32 +145,32 @@ const authConfig: Parameters<typeof betterAuth>[0] = {
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <title>Verify your email</title>
               </head>
-              <body style="font-family: 'Poppins', Arial, sans-serif; margin: 0; padding: 0; background-color: #f4f4f5;">
-                <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f4f4f5; padding: 40px 20px;">
+              <body style="font-family: 'Inter', Arial, sans-serif; margin: 0; padding: 0; background-color: #0A0A0F; color: #FAFAFA;">
+                <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #0A0A0F; padding: 40px 20px;">
                   <tr>
                     <td align="center">
-                      <table width="100%" max-width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                      <table width="100%" max-width="600" cellpadding="0" cellspacing="0" style="background-color: #1E1E28; border-radius: 12px; border: 1px solid rgba(250, 250, 250, 0.1);">
                         <!-- Header -->
                         <tr>
-                          <td style="background: linear-gradient(135deg, #559EFF 0%, #0065BA 100%); padding: 32px; border-radius: 8px 8px 0 0; text-align: center;">
-                            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 600;">AppealGen AI</h1>
-                            <p style="color: rgba(255,255,255,0.9); margin: 8px 0 0 0; font-size: 14px;">by 10XR</p>
+                          <td style="background: linear-gradient(135deg, #8134CE 0%, #6E18B3 100%); padding: 32px; border-radius: 12px 12px 0 0; text-align: center;">
+                            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 600; font-family: 'Space Grotesk', sans-serif;">Project Lazarus</h1>
+                            <p style="color: rgba(255,255,255,0.9); margin: 8px 0 0 0; font-size: 14px;">The Legacy Code Necromancer</p>
                           </td>
                         </tr>
                         <!-- Content -->
                         <tr>
                           <td style="padding: 40px 32px;">
-                            <h2 style="color: #001320; margin: 0 0 16px 0; font-size: 20px; font-weight: 600;">Verify your email address</h2>
-                            <p style="color: #52525b; margin: 0 0 24px 0; font-size: 16px; line-height: 1.6;">
+                            <h2 style="color: #FAFAFA; margin: 0 0 16px 0; font-size: 20px; font-weight: 600;">Verify your email address</h2>
+                            <p style="color: #A1A1AA; margin: 0 0 24px 0; font-size: 16px; line-height: 1.6;">
                               Hi ${user.name || "there"},
                             </p>
-                            <p style="color: #52525b; margin: 0 0 24px 0; font-size: 16px; line-height: 1.6;">
-                              Thanks for signing up for AppealGen AI! Please verify your email address by clicking the button below.
+                            <p style="color: #A1A1AA; margin: 0 0 24px 0; font-size: 16px; line-height: 1.6;">
+                              Thanks for signing up for Project Lazarus! Please verify your email address by clicking the button below.
                             </p>
                             <table width="100%" cellpadding="0" cellspacing="0">
                               <tr>
                                 <td align="center" style="padding: 16px 0;">
-                                  <a href="${url}" style="display: inline-block; background-color: #568AFF; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 6px; font-size: 16px; font-weight: 600;">
+                                  <a href="${url}" style="display: inline-block; background-color: #6E18B3; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 6px; font-size: 16px; font-weight: 600;">
                                     Verify Email Address
                                   </a>
                                 </td>
@@ -196,12 +186,9 @@ const authConfig: Parameters<typeof betterAuth>[0] = {
                         </tr>
                         <!-- Footer -->
                         <tr>
-                          <td style="padding: 24px 32px; border-top: 1px solid #e4e4e7; text-align: center;">
-                            <p style="color: #a1a1aa; margin: 0; font-size: 12px;">
-                              &copy; ${new Date().getFullYear()} 10XR. All rights reserved.
-                            </p>
-                            <p style="color: #a1a1aa; margin: 8px 0 0 0; font-size: 12px;">
-                              <a href="https://10xr.co" style="color: #568AFF; text-decoration: none;">10xr.co</a>
+                          <td style="padding: 24px 32px; border-top: 1px solid rgba(250, 250, 250, 0.1); text-align: center;">
+                            <p style="color: #71717a; margin: 0; font-size: 12px;">
+                              &copy; ${new Date().getFullYear()} Project Lazarus. All rights reserved.
                             </p>
                           </td>
                         </tr>
@@ -220,12 +207,16 @@ const authConfig: Parameters<typeof betterAuth>[0] = {
     },
   },
 
-  // Social providers
+  // Social providers (only enable when credentials are configured)
   socialProviders: {
-    google: {
-      clientId: process.env.GOOGLE_CLIENT_ID || "",
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
-    },
+    ...(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
+      ? {
+          google: {
+            clientId: process.env.GOOGLE_CLIENT_ID,
+            clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+          },
+        }
+      : {}),
   },
 
   // Session configuration
@@ -261,10 +252,80 @@ const authConfig: Parameters<typeof betterAuth>[0] = {
     window: 60, // 60 seconds
     max: 10, // 10 requests per window
   },
+  } as Parameters<typeof betterAuth>[0]
 }
 
-export const auth = betterAuth(authConfig)
+// Lazy init: Only create real auth when database is configured (avoids build-time errors in CI)
+let authInstance: ReturnType<typeof betterAuth> | null = null
+
+function getAuth(): ReturnType<typeof betterAuth> {
+  if (authInstance) return authInstance
+
+  // During build (e.g. CI), SUPABASE_DB_URL may be unset - use stub to avoid "Failed to initialize database adapter"
+  if (!process.env.SUPABASE_DB_URL) {
+    authInstance = createAuthStub()
+    return authInstance
+  }
+
+  try {
+    const dbUrl = process.env.SUPABASE_DB_URL
+    // Explicitly use public schema to avoid "Schema '$user' does not exist" warning
+    const connectionString =
+      dbUrl +
+      (dbUrl?.includes("?") ? "&" : "?") +
+      "options=-c%20search_path%3Dpublic"
+    // Better Auth's Kysely adapter requires a pg Pool (with "connect" method), not { provider, url }
+    const pool = new Pool({
+      connectionString,
+      ssl: dbUrl?.includes("supabase.co")
+        ? { rejectUnauthorized: false }
+        : undefined,
+    })
+    const config = buildAuthConfig(pool)
+    authInstance = betterAuth(config)
+    return authInstance
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.error("[Better Auth] Failed to initialize:", message)
+    // Fallback stub if betterAuth throws (e.g. DB connection fails during build)
+    authInstance = createAuthStub()
+    return authInstance
+  }
+}
+
+function createAuthStub() {
+  const stub = {
+    api: {
+      getSession: async () => null,
+      getSessionFromToken: async () => null,
+    },
+    handler: (req: Request) =>
+      new Response(
+        JSON.stringify({
+          error: "Auth not configured",
+          message:
+            "SUPABASE_DB_URL is required. Set environment variables and restart.",
+        }),
+        { status: 503, headers: { "Content-Type": "application/json" } }
+      ),
+    $Infer: { Session: { user: {} } },
+  }
+  return stub as unknown as ReturnType<typeof betterAuth>
+}
+
+export const auth = new Proxy({} as ReturnType<typeof betterAuth>, {
+  get(_, prop) {
+    return getAuth()[prop as keyof ReturnType<typeof betterAuth>]
+  },
+  has(_, prop) {
+    // toNextJsHandler checks "handler" in auth to choose auth.handler vs auth(request)
+    return prop in getAuth()
+  },
+})
 
 // Export types
-export type Session = typeof auth.$Infer.Session
-export type User = typeof auth.$Infer.Session.user
+export type Session = {
+  user: { id: string; email: string; name?: string | null; image?: string | null }
+  session: { id: string; expiresAt: Date; token: string; userId: string }
+} | null
+export type User = NonNullable<Session>["user"]

@@ -1,217 +1,154 @@
 @import 'tailwindcss';
 
 /* ============================================================================
-   AppealGen AI - A 10XR Product
-   Brand Theme based on 10XR brand guidelines (brand/brand.md)
-
-   Brand Hierarchy:
-   - 10XR (https://10xr.co): Parent startup/company
-   - AppealGen AI: Medical denial appeal generator product
-
+   Project Lazarus Design System
    Tailwind CSS v4 + shadcn/ui compatible
+   Theme: Void Black + Rail Purple (Glass Brain Aesthetic)
    ============================================================================ */
 
-@theme inline {
+@theme {
   /* ==========================================================================
-     Brand Colors (from brand.md)
+     Color Primitives
      ========================================================================== */
-
-  /* Primary: Cornflower Blue - Main interactive elements, headlines */
-  --color-brand-primary: #568AFF;
-
-  /* Secondary: Green-Blue - Supporting elements, gradients, depth */
-  --color-brand-secondary: #0665BA;
-
-  /* Base: Rich Black - Text, dark backgrounds */
-  --color-brand-dark: #001320;
-
-  /* Accent: French Sky Blue - Highlights, notifications */
-  --color-brand-accent: #66ABFE;
-
-  /* Gradient endpoints */
-  --color-brand-gradient-start: #559EFF;
-  --color-brand-gradient-end: #0065BA;
+  --color-void-black: #0A0A0F;
+  --color-slate-grey: #1E1E28;
+  --color-cloud-white: #FAFAFA;
+  --color-pure-white: #FFFFFF;
+  --color-obsidian: #050507; /* Darker background for depth */
 
   /* ==========================================================================
-     shadcn/ui Semantic Colors (mapped to brand)
+     Brand Colors
      ========================================================================== */
+  --color-rail-purple: #6E18B3;
+  --color-quantum-violet: #8134CE;
+  --color-deep-purple: #5B0B96;
+  --color-electric-cyan: #00E5FF;
+  --color-neon-blue: #2979FF; /* For active states */
 
-  --color-background: hsl(var(--background));
-  --color-foreground: hsl(var(--foreground));
-  --color-card: hsl(var(--card));
-  --color-card-foreground: hsl(var(--card-foreground));
-  --color-popover: hsl(var(--popover));
-  --color-popover-foreground: hsl(var(--popover-foreground));
-  --color-primary: hsl(var(--primary));
-  --color-primary-foreground: hsl(var(--primary-foreground));
-  --color-secondary: hsl(var(--secondary));
-  --color-secondary-foreground: hsl(var(--secondary-foreground));
-  --color-muted: hsl(var(--muted));
-  --color-muted-foreground: hsl(var(--muted-foreground));
-  --color-accent: hsl(var(--accent));
-  --color-accent-foreground: hsl(var(--accent-foreground));
-  --color-destructive: hsl(var(--destructive));
-  --color-destructive-foreground: hsl(var(--destructive-foreground));
-  --color-border: hsl(var(--border));
-  --color-input: hsl(var(--input));
-  --color-ring: hsl(var(--ring));
+  /* ==========================================================================
+     Status Colors
+     ========================================================================== */
+  --color-success: #00FF88;
+  --color-warning: #FFB800;
+  --color-error: #FF3366;
+  --color-info: #00E5FF;
+
+  /* ==========================================================================
+     shadcn/ui Semantic Colors (mapped to design system)
+     ========================================================================== */
+  --color-background: var(--color-void-black);
+  --color-foreground: var(--color-cloud-white);
+
+  --color-card: rgba(30, 30, 40, 0.4); /* Glass effect base */
+  --color-card-foreground: var(--color-cloud-white);
+
+  --color-popover: var(--color-slate-grey);
+  --color-popover-foreground: var(--color-cloud-white);
+
+  --color-primary: var(--color-rail-purple);
+  --color-primary-foreground: var(--color-pure-white);
+
+  --color-secondary: var(--color-slate-grey);
+  --color-secondary-foreground: var(--color-cloud-white);
+
+  --color-muted: rgba(30, 30, 40, 0.5);
+  --color-muted-foreground: rgba(250, 250, 250, 0.6);
+
+  --color-accent: var(--color-electric-cyan);
+  --color-accent-foreground: var(--color-void-black);
+
+  --color-destructive: var(--color-error);
+  --color-destructive-foreground: var(--color-pure-white);
+
+  --color-border: rgba(250, 250, 250, 0.1);
+  --color-input: rgba(250, 250, 250, 0.15);
+  --color-ring: var(--color-quantum-violet);
 
   /* Chart colors */
-  --color-chart-1: hsl(var(--chart-1));
-  --color-chart-2: hsl(var(--chart-2));
-  --color-chart-3: hsl(var(--chart-3));
-  --color-chart-4: hsl(var(--chart-4));
-  --color-chart-5: hsl(var(--chart-5));
+  --color-chart-1: var(--color-rail-purple);
+  --color-chart-2: var(--color-quantum-violet);
+  --color-chart-3: var(--color-electric-cyan);
+  --color-chart-4: var(--color-success);
+  --color-chart-5: var(--color-warning);
+
+  /* Sidebar */
+  --color-sidebar: var(--color-obsidian);
+  --color-sidebar-foreground: var(--color-cloud-white);
+  --color-sidebar-primary: var(--color-rail-purple);
+  --color-sidebar-primary-foreground: var(--color-pure-white);
+  --color-sidebar-accent: #16161F;
+  --color-sidebar-accent-foreground: var(--color-cloud-white);
+  --color-sidebar-border: rgba(250, 250, 250, 0.08);
+  --color-sidebar-ring: var(--color-quantum-violet);
 
   /* ==========================================================================
-     Border Radius (shadcn defaults)
+     Font Families (Tailwind v4: --font-* creates font-* utility)
      ========================================================================== */
-
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+  --font-grotesk: var(--font-space-grotesk), 'Space Grotesk', sans-serif;
+  --font-sans: var(--font-inter-var), 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: var(--font-jetbrains), 'JetBrains Mono', 'Fira Code', monospace;
 
   /* ==========================================================================
-     Typography (from brand.md)
+     Border Radius
      ========================================================================== */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 24px;
+  --radius-full: 9999px;
 
-  /* Font families - Using Next.js font CSS variables */
-  --font-sans: var(--font-poppins), ui-sans-serif, system-ui, sans-serif;
-  --font-accent: var(--font-sofia), ui-sans-serif, sans-serif;
+  /* ==========================================================================
+     Spacing
+     ========================================================================== */
+  --spacing-18: 4.5rem;
+  --spacing-22: 5.5rem;
 
-  /* Font sizes matching brand guidelines */
-  --text-h1: 3rem;      /* 48px */
-  --text-h2: 2.25rem;   /* 36px */
-  --text-h3: 1.75rem;   /* 28px */
-  --text-large: 1.5rem; /* 24px */
-  --text-body-lg: 1.125rem; /* 18px */
-  --text-body: 1rem;    /* 16px */
-  --text-small: 0.875rem; /* 14px */
-  --text-caption: 0.75rem; /* 12px */
-}
+  /* ==========================================================================
+     Animations
+     ========================================================================== */
+  --animate-fade-in: fade-in 0.5s ease-out;
+  --animate-slide-up: slide-up 0.5s ease-out;
+  --animate-pulse-glow: pulse-glow 2s ease-in-out infinite;
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+  --animate-shimmer: shimmer 2s linear infinite;
+  --animate-float: float 6s ease-in-out infinite;
 
-/* =============================================================================
-   CSS Variables - Light Mode (Default)
-   Primary: Cornflower Blue (#568AFF) → HSL: 220 100% 67%
-   Secondary: Green-Blue (#0665BA) → HSL: 207 95% 38%
-   Rich Black (#001320) → HSL: 207 100% 6%
-   ============================================================================= */
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
 
-:root {
-  /* Background & Foreground */
-  --background: 0 0% 100%;
-  --foreground: 207 100% 6%;  /* Rich Black */
+  @keyframes slide-up {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
 
-  /* Cards & Popovers */
-  --card: 0 0% 100%;
-  --card-foreground: 207 100% 6%;
-  --popover: 0 0% 100%;
-  --popover-foreground: 207 100% 6%;
+  @keyframes pulse-glow {
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 1; }
+  }
 
-  /* Primary: Cornflower Blue */
-  --primary: 220 100% 67%;
-  --primary-foreground: 0 0% 100%;
+  @keyframes accordion-down {
+    from { height: 0; }
+    to { height: var(--radix-accordion-content-height); }
+  }
 
-  /* Secondary: Lighter blue tint */
-  --secondary: 210 40% 96%;
-  --secondary-foreground: 207 100% 6%;
+  @keyframes accordion-up {
+    from { height: var(--radix-accordion-content-height); }
+    to { height: 0; }
+  }
 
-  /* Muted */
-  --muted: 210 40% 96%;
-  --muted-foreground: 207 30% 45%;
+  @keyframes shimmer {
+    from { background-position: 0 0; }
+    to { background-position: -200% 0; }
+  }
 
-  /* Accent: French Sky Blue */
-  --accent: 212 98% 70%;
-  --accent-foreground: 207 100% 6%;
-
-  /* Destructive */
-  --destructive: 0 84% 60%;
-  --destructive-foreground: 0 0% 100%;
-
-  /* Borders & Inputs */
-  --border: 210 30% 90%;
-  --input: 210 30% 90%;
-  --ring: 220 100% 67%;  /* Cornflower Blue */
-
-  /* Radius */
-  --radius: 0.5rem;
-
-  /* Chart colors - Brand aligned */
-  --chart-1: 220 100% 67%;  /* Cornflower Blue */
-  --chart-2: 207 95% 38%;   /* Green-Blue */
-  --chart-3: 212 98% 70%;   /* French Sky Blue */
-  --chart-4: 173 58% 39%;
-  --chart-5: 43 74% 66%;
-
-  /* Sidebar (for chat interface) */
-  --sidebar-background: 207 100% 6%;  /* Rich Black */
-  --sidebar-foreground: 0 0% 100%;
-  --sidebar-primary: 220 100% 67%;
-  --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 207 50% 15%;
-  --sidebar-accent-foreground: 0 0% 100%;
-  --sidebar-border: 207 50% 15%;
-  --sidebar-ring: 220 100% 67%;
-}
-
-/* =============================================================================
-   CSS Variables - Dark Mode
-   Background: Rich Black (#001320)
-   ============================================================================= */
-
-.dark {
-  /* Background & Foreground */
-  --background: 207 100% 6%;  /* Rich Black */
-  --foreground: 0 0% 98%;
-
-  /* Cards & Popovers */
-  --card: 207 80% 8%;
-  --card-foreground: 0 0% 98%;
-  --popover: 207 80% 8%;
-  --popover-foreground: 0 0% 98%;
-
-  /* Primary: Cornflower Blue */
-  --primary: 220 100% 67%;
-  --primary-foreground: 207 100% 6%;
-
-  /* Secondary */
-  --secondary: 207 50% 15%;
-  --secondary-foreground: 0 0% 98%;
-
-  /* Muted */
-  --muted: 207 50% 15%;
-  --muted-foreground: 210 20% 65%;
-
-  /* Accent: French Sky Blue */
-  --accent: 212 98% 70%;
-  --accent-foreground: 207 100% 6%;
-
-  /* Destructive */
-  --destructive: 0 62% 30%;
-  --destructive-foreground: 0 0% 98%;
-
-  /* Borders & Inputs */
-  --border: 207 50% 15%;
-  --input: 207 50% 15%;
-  --ring: 220 100% 67%;
-
-  /* Chart colors - Brand aligned */
-  --chart-1: 220 100% 67%;
-  --chart-2: 212 98% 70%;
-  --chart-3: 207 95% 50%;
-  --chart-4: 280 65% 60%;
-  --chart-5: 340 75% 55%;
-
-  /* Sidebar (for chat interface) */
-  --sidebar-background: 207 100% 4%;
-  --sidebar-foreground: 0 0% 98%;
-  --sidebar-primary: 220 100% 67%;
-  --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 207 50% 12%;
-  --sidebar-accent-foreground: 0 0% 98%;
-  --sidebar-border: 207 50% 12%;
-  --sidebar-ring: 220 100% 67%;
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+  }
 }
 
 /* =============================================================================
@@ -219,114 +156,144 @@
    ============================================================================= */
 
 @layer base {
-  * {
-    border-color: hsl(var(--border));
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-border);
+  }
+
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
   }
 
   body {
-    background-color: hsl(var(--background));
-    color: hsl(var(--foreground));
     font-family: var(--font-sans);
-    font-weight: 400;
-    line-height: 1.6;
+    background-color: var(--color-void-black);
+    color: var(--color-cloud-white);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11"; /* Enterprise Inter settings */
   }
 
-  /* Typography hierarchy from brand.md */
   h1, h2, h3, h4, h5, h6 {
-    font-family: var(--font-sans);
+    font-family: var(--font-grotesk);
     font-weight: 600;
     line-height: 1.2;
     letter-spacing: -0.02em;
   }
 
-  h1 {
-    font-size: var(--text-h1);
+  code, pre {
+    font-family: var(--font-mono);
   }
+}
 
-  h2 {
-    font-size: var(--text-h2);
-  }
-
-  h3 {
-    font-size: var(--text-h3);
+/* Reduced Motion Support */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 
 /* =============================================================================
-   Brand Utility Classes
+   Gradient & Glass Utilities
    ============================================================================= */
 
 @layer utilities {
-  /* Brand gradient backgrounds */
-  .bg-brand-gradient {
-    background: linear-gradient(135deg, #559EFF 0%, #0065BA 100%);
+  /* Brand gradients */
+  .bg-rail-fade {
+    background: linear-gradient(135deg, #8134CE 0%, #6E18B3 100%);
   }
 
-  .bg-brand-gradient-vertical {
-    background: linear-gradient(180deg, #559EFF 0%, #0065BA 100%);
+  .bg-automation-flow {
+    background: linear-gradient(90deg, #00E5FF 0%, #8134CE 50%, #6E18B3 100%);
   }
 
-  .bg-brand-gradient-horizontal {
-    background: linear-gradient(90deg, #559EFF 0%, #0065BA 100%);
+  .bg-infra-depth {
+    background: linear-gradient(180deg, #0A0A0F 0%, #1E1E28 100%);
   }
 
-  /* Brand text gradient */
-  .text-brand-gradient {
-    background: linear-gradient(135deg, #559EFF 0%, #0065BA 100%);
+  /* Text gradient */
+  .text-gradient {
+    background: linear-gradient(135deg, #8134CE 0%, #6E18B3 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
   }
 
-  /* Accent font */
-  .font-accent {
-    font-family: var(--font-accent);
-    font-weight: 400;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
+  /* Border gradient */
+  .border-gradient {
+    position: relative;
+    background: var(--color-slate-grey);
+    border-radius: var(--radius-xl);
   }
 
-  /* Brand shadows */
-  .shadow-brand {
-    box-shadow: 0 4px 14px 0 rgba(86, 138, 255, 0.25);
+  .border-gradient::before {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: calc(var(--radius-xl) + 1px);
+    background: linear-gradient(135deg, rgba(129, 52, 206, 0.5), rgba(110, 24, 179, 0.5));
+    z-index: -1;
   }
 
-  .shadow-brand-lg {
-    box-shadow: 0 10px 40px 0 rgba(86, 138, 255, 0.3);
+  /* Glow effects */
+  .glow-purple {
+    box-shadow: 0 0 20px rgba(129, 52, 206, 0.2);
   }
 
-  /* Focus ring with brand color */
-  .ring-brand {
-    --tw-ring-color: #568AFF;
-  }
-}
-
-/* =============================================================================
-   Component Overrides (shadcn/ui brand alignment)
-   ============================================================================= */
-
-@layer components {
-  /* Primary button with brand gradient on hover */
-  .btn-brand {
-    background-color: #568AFF;
-    color: white;
-    transition: all 0.2s ease;
+  .glow-purple-strong {
+    box-shadow: 0 0 40px rgba(129, 52, 206, 0.3);
   }
 
-  .btn-brand:hover {
-    background: linear-gradient(135deg, #559EFF 0%, #0065BA 100%);
+  .glow-cyan {
+    box-shadow: 0 0 20px rgba(0, 229, 255, 0.2);
   }
 
-  /* Card with brand accent border */
-  .card-brand {
-    border-left: 4px solid #568AFF;
+  /* Glassmorphism */
+  .glass-panel {
+    background: rgba(30, 30, 40, 0.4);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(250, 250, 250, 0.08);
   }
 
-  /* Input focus with brand ring */
-  .input-brand:focus {
-    --tw-ring-color: #568AFF;
-    border-color: #568AFF;
+  .glass-card {
+    background: rgba(30, 30, 40, 0.3);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(250, 250, 250, 0.05);
+    transition: all 0.2s ease-in-out;
+  }
+
+  .glass-card:hover {
+    background: rgba(30, 30, 40, 0.5);
+    border-color: rgba(250, 250, 250, 0.15);
+  }
+
+  /* Scrollbar */
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  /* Font utilities (enterprise typography per UI_UX_GUIDE.md) */
+  .font-grotesk {
+    font-family: var(--font-grotesk);
+  }
+
+  .font-mono {
+    font-family: var(--font-mono);
   }
 }

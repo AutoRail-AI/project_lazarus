@@ -1,6 +1,5 @@
 import type { Metadata } from "next"
 import { OAuthButtons, RegisterForm } from "@/components/auth"
-import { Separator } from "@/components/ui/separator"
 
 export const metadata: Metadata = {
   title: "Create Account",
@@ -19,18 +18,6 @@ export default function RegisterPage() {
 
       <div className="space-y-4">
         <OAuthButtons mode="register" />
-
-        <div className="relative">
-          <div className="absolute inset-0 flex items-center">
-            <Separator className="w-full" />
-          </div>
-          <div className="relative flex justify-center text-xs uppercase">
-            <span className="bg-background px-2 text-muted-foreground">
-              Or continue with email
-            </span>
-          </div>
-        </div>
-
         <RegisterForm />
       </div>
     </div>

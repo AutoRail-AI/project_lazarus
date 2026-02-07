@@ -1,31 +1,10 @@
-import mongoose, { Schema } from "mongoose"
 import { headers } from "next/headers"
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
-import { connectDB } from "@/lib/db/mongoose"
+import { supabase } from "@/lib/db"
+import type { Database } from "@/lib/db/types"
 
-export interface IRateLimit extends mongoose.Document {
-  key: string
-  count: number
-  resetAt: Date
-  createdAt: Date
-}
-
-const RateLimitSchema = new Schema<IRateLimit>(
-  {
-    key: { type: String, required: true, unique: true, index: true },
-    count: { type: Number, default: 0 },
-    resetAt: { type: Date, required: true, index: true },
-  },
-  { timestamps: true }
-)
-
-// TTL index for auto-cleanup
-RateLimitSchema.index({ resetAt: 1 }, { expireAfterSeconds: 0 })
-
-export const RateLimit =
-  mongoose.models.RateLimit ||
-  mongoose.model<IRateLimit>("RateLimit", RateLimitSchema)
+export type RateLimit = Database["public"]["Tables"]["rate_limits"]["Row"]
 
 export interface RateLimitOptions {
   windowMs: number // Time window in milliseconds
@@ -38,8 +17,6 @@ export async function rateLimit(
   req: NextRequest,
   options: RateLimitOptions
 ): Promise<{ success: boolean; remaining: number; resetAt: Date }> {
-  await connectDB()
-
   // Generate rate limit key
   let key: string
   if (options.keyGenerator) {
@@ -48,9 +25,10 @@ export async function rateLimit(
     // Default: use user ID or IP address
     const session = await auth.api.getSession({ headers: await headers() })
     // Get IP from headers (NextRequest doesn't have .ip property)
-    const ip = req.headers.get("x-forwarded-for")?.split(",")[0] || 
-               req.headers.get("x-real-ip") || 
-               "anonymous"
+    const ip =
+      req.headers.get("x-forwarded-for")?.split(",")[0] ||
+      req.headers.get("x-real-ip") ||
+      "anonymous"
     key = session?.user?.id || ip
   }
 
@@ -58,33 +36,51 @@ export async function rateLimit(
   const resetAt = new Date(now.getTime() + options.windowMs)
 
   // Get or create rate limit record
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let rateLimit = await (RateLimit as any).findOne({ key })
+  const { data: existing, error } = await (supabase as any)
+    .from("rate_limits")
+    .select("*")
+    .eq("key", key)
+    .single()
 
-  if (!rateLimit) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    rateLimit = await (RateLimit as any).create({
-      key,
-      count: 1,
-      resetAt,
-    })
-  } else if (rateLimit.resetAt < now) {
-    // Reset window
-    rateLimit.count = 1
-    rateLimit.resetAt = resetAt
-    await rateLimit.save()
-  } else {
-    // Increment count
-    rateLimit.count += 1
-    await rateLimit.save()
+  if (error && error.code !== "PGRST116") {
+    // Error other than not found
+    console.error("Rate limit check failed:", error)
+    // Fail open
+    return { success: true, remaining: options.maxRequests, resetAt }
   }
 
-  const remaining = Math.max(0, options.maxRequests - rateLimit.count)
+  let count = 1
+  let currentResetAt = resetAt
+
+  if (!existing) {
+    // Create new record
+    await (supabase as any).from("rate_limits").insert({
+      key,
+      count: 1,
+      reset_at: resetAt.toISOString(),
+    })
+  } else if (new Date(existing.reset_at) < now) {
+    // Reset window
+    await (supabase as any)
+      .from("rate_limits")
+      .update({ count: 1, reset_at: resetAt.toISOString() })
+      .eq("key", key)
+  } else {
+    // Increment count
+    count = existing.count + 1
+    currentResetAt = new Date(existing.reset_at)
+    await (supabase as any)
+      .from("rate_limits")
+      .update({ count })
+      .eq("key", key)
+  }
+
+  const remaining = Math.max(0, options.maxRequests - count)
 
   return {
-    success: rateLimit.count <= options.maxRequests,
+    success: count <= options.maxRequests,
     remaining,
-    resetAt: rateLimit.resetAt,
+    resetAt: currentResetAt,
   }
 }
 
@@ -123,4 +119,3 @@ export function withRateLimit(
     return response
   }
 }
-

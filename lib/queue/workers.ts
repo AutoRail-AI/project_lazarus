@@ -1,9 +1,16 @@
 import { type Job, Worker } from "bullmq"
+import { env } from "@/env.mjs"
+import { generateSlices } from "@/lib/ai/gemini-planner"
+import { supabase } from "@/lib/db"
+import type { Database } from "@/lib/db/types"
+import { createRightBrainClient } from "@/lib/mcp/right-brain-client"
+import { runCodeSynapse } from "@/lib/workspaces/code-synapse-runner"
 import { createRedisConnection } from "./redis"
 import {
   type EmailJobData,
   type JobResult,
   type ProcessingJobData,
+  type ProjectProcessingJobData,
   QUEUE_NAMES,
   type WebhookJobData,
 } from "./types"
@@ -104,6 +111,277 @@ async function processWebhookJob(job: Job<WebhookJobData>): Promise<JobResult> {
 }
 
 /**
+ * Insert a thought event into the agent_events table.
+ */
+async function insertThought(
+  projectId: string,
+  content: string,
+  sliceId?: string
+): Promise<void> {
+  await (supabase as any).from("agent_events").insert({
+    project_id: projectId,
+    slice_id: sliceId ?? null,
+    event_type: "thought",
+    content,
+  })
+}
+
+/**
+ * Project processing job — orchestrates Left Brain → Right Brain → Gemini planner.
+ */
+async function processProjectJob(
+  job: Job<ProjectProcessingJobData>
+): Promise<JobResult> {
+  const { projectId, userId, githubUrl, targetFramework } = job.data
+
+  console.log(`[Project Processing] Starting for project ${projectId}`)
+
+  try {
+    await insertThought(projectId, "Beginning project analysis...")
+    await job.updateProgress(5)
+
+    let codeAnalysis: Record<string, unknown> = {}
+    let behavioralAnalysis: Record<string, unknown> = {}
+    let sandboxId: string | undefined
+
+    // --- LEFT BRAIN ---
+    if (githubUrl) {
+      await (supabase as any)
+        .from("projects")
+        .update({ left_brain_status: "processing", updated_at: new Date().toISOString() })
+        .eq("id", projectId)
+
+      await insertThought(projectId, "Running Code-Synapse analysis on repository...")
+
+      try {
+        const { client, metadata } = await runCodeSynapse(projectId, githubUrl)
+        sandboxId = metadata.sandboxId
+
+        await job.updateProgress(20)
+        await insertThought(projectId, "Extracting feature map...")
+
+        const featureMap = await client.getFeatureMap(true)
+        await job.updateProgress(30)
+
+        await insertThought(projectId, "Analyzing slice dependencies...")
+        const sliceDeps = await client.getSliceDependencies()
+        await job.updateProgress(40)
+
+        await insertThought(projectId, "Gathering project statistics...")
+        const stats = await client.getProjectStats()
+        await job.updateProgress(45)
+
+        // Get migration context for each feature
+        const features = (featureMap as { features?: Array<{ name: string }> })?.features || []
+        const migrationContexts: Record<string, unknown> = {}
+
+        for (const feature of features) {
+          if (feature.name) {
+            try {
+              await insertThought(projectId, `Analyzing migration context for "${feature.name}"...`)
+              migrationContexts[feature.name] = await client.getMigrationContext(feature.name)
+            } catch (err: unknown) {
+              console.warn(`Failed to get migration context for ${feature.name}:`, err)
+            }
+          }
+        }
+
+        await job.updateProgress(55)
+
+        codeAnalysis = {
+          featureMap,
+          sliceDeps,
+          stats,
+          migrationContexts,
+          mcpUrl: metadata.mcpUrl,
+        }
+
+        await (supabase as any)
+          .from("projects")
+          .update({ left_brain_status: "complete", updated_at: new Date().toISOString() })
+          .eq("id", projectId)
+
+        await insertThought(projectId, "Code analysis complete.")
+      } catch (err: unknown) {
+        console.error("[Left Brain] Failed:", err)
+        await (supabase as any)
+          .from("projects")
+          .update({ left_brain_status: "failed", updated_at: new Date().toISOString() })
+          .eq("id", projectId)
+        await insertThought(
+          projectId,
+          `Code analysis failed: ${err instanceof Error ? err.message : "Unknown error"}`
+        )
+      }
+    }
+
+    // --- RIGHT BRAIN ---
+    if (env.RIGHT_BRAIN_MCP_URL) {
+      // Check if project has assets
+      const { data: assets } = await (supabase as any)
+        .from("project_assets")
+        .select("*")
+        .eq("project_id", projectId) as { data: Array<{ storage_path: string }> | null }
+
+      if (assets && assets.length > 0) {
+        await (supabase as any)
+          .from("projects")
+          .update({ right_brain_status: "processing", updated_at: new Date().toISOString() })
+          .eq("id", projectId)
+
+        await insertThought(projectId, "Starting behavioral analysis with Right Brain...")
+
+        try {
+          const rbClient = createRightBrainClient()
+
+          const s3Refs = assets.map((a) => a.storage_path)
+          const ingestResult = await rbClient.startIngestion({
+            website_url: githubUrl,
+            knowledge_id: projectId,
+            s3_references: s3Refs,
+          })
+
+          await job.updateProgress(65)
+
+          const workflow = await rbClient.waitForWorkflow(ingestResult.job_id)
+
+          if (workflow.status === "failed") {
+            throw new Error(`Right Brain workflow failed: ${workflow.error}`)
+          }
+
+          await job.updateProgress(75)
+
+          // Generate contracts for each feature
+          const features = (codeAnalysis.featureMap as { features?: Array<{ name: string }> })?.features || []
+          const contracts: Record<string, unknown> = {}
+
+          for (const feature of features) {
+            if (feature.name) {
+              try {
+                const contract = await rbClient.generateContract(projectId, feature.name)
+                const leftBrainFormat = await rbClient.getContractLeftBrain(contract.contract_id)
+                contracts[feature.name] = leftBrainFormat
+              } catch (err: unknown) {
+                console.warn(`Failed to generate contract for ${feature.name}:`, err)
+              }
+            }
+          }
+
+          behavioralAnalysis = { contracts, workflow }
+
+          await (supabase as any)
+            .from("projects")
+            .update({ right_brain_status: "complete", updated_at: new Date().toISOString() })
+            .eq("id", projectId)
+
+          await insertThought(projectId, "Behavioral analysis complete.")
+        } catch (err: unknown) {
+          console.error("[Right Brain] Failed:", err)
+          await (supabase as any)
+            .from("projects")
+            .update({ right_brain_status: "failed", updated_at: new Date().toISOString() })
+            .eq("id", projectId)
+          await insertThought(
+            projectId,
+            `Behavioral analysis failed: ${err instanceof Error ? err.message : "Unknown error"}`
+          )
+        }
+      }
+    }
+
+    await job.updateProgress(80)
+
+    // --- GEMINI PLANNER ---
+    await insertThought(projectId, "Generating vertical slices...")
+
+    // Update project metadata with analysis results
+    await (supabase as any)
+      .from("projects")
+      .update({
+        metadata: {
+          code_analysis: codeAnalysis,
+          behavioral_analysis: behavioralAnalysis,
+          ...(sandboxId ? { daytona_sandbox_id: sandboxId } : {}),
+        },
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", projectId)
+
+    // Fetch updated project for Gemini planner
+    type Project = Database["public"]["Tables"]["projects"]["Row"]
+    const { data: updatedProject } = await (supabase as any)
+      .from("projects")
+      .select("*")
+      .eq("id", projectId)
+      .single() as { data: Project | null }
+
+    if (updatedProject) {
+      const slices = await generateSlices(updatedProject)
+      await job.updateProgress(90)
+
+      // Insert slices into vertical_slices table
+      if (slices.length > 0) {
+        const sliceRows = slices.map((slice, index) => ({
+          project_id: projectId,
+          name: slice.name,
+          description: slice.description || null,
+          priority: slice.priority ?? index + 1,
+          status: "pending" as const,
+          behavioral_contract: slice.behavioral_contract || null,
+          code_contract: slice.code_contract || null,
+          modernization_flags: slice.modernization_flags || null,
+          dependencies: slice.dependencies || [],
+          confidence_score: 0,
+          retry_count: 0,
+        }))
+
+        const { error: insertError } = await (supabase as any)
+          .from("vertical_slices")
+          .insert(sliceRows)
+
+        if (insertError) {
+          console.error("Failed to insert slices:", insertError)
+        }
+      }
+
+      await insertThought(
+        projectId,
+        `Project ready! Generated ${slices.length} vertical slice${slices.length !== 1 ? "s" : ""}.`
+      )
+    }
+
+    // Set project status to ready
+    await (supabase as any)
+      .from("projects")
+      .update({ status: "ready" as const, updated_at: new Date().toISOString() })
+      .eq("id", projectId)
+
+    await job.updateProgress(100)
+
+    console.log(`[Project Processing] Completed for project ${projectId}`)
+    return { success: true, message: `Project ${projectId} processed successfully` }
+  } catch (error: unknown) {
+    console.error(`[Project Processing] Failed for project ${projectId}:`, error)
+
+    // Reset project status on failure
+    await (supabase as any)
+      .from("projects")
+      .update({
+        status: "pending" as const,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", projectId)
+
+    await insertThought(
+      projectId,
+      `Processing failed: ${error instanceof Error ? error.message : "Unknown error"}`
+    )
+
+    throw error
+  }
+}
+
+/**
  * Start all workers
  * Call this when your application starts (e.g., in a separate worker process)
  */
@@ -137,6 +415,17 @@ export function startWorkers(): void {
     concurrency: 10,
   })
   workers.push(webhooksWorker)
+
+  // Project processing worker
+  const projectProcessingWorker = new Worker(
+    QUEUE_NAMES.PROJECT_PROCESSING,
+    processProjectJob,
+    {
+      connection: createRedisConnection() as any,
+      concurrency: 1, // One project at a time
+    }
+  )
+  workers.push(projectProcessingWorker)
 
   // Set up event handlers for all workers
   workers.forEach((worker) => {

@@ -3,6 +3,7 @@ import { getRedis } from "./redis"
 import {
   type EmailJobData,
   type ProcessingJobData,
+  type ProjectProcessingJobData,
   QUEUE_NAMES,
   type WebhookJobData,
 } from "./types"
@@ -30,6 +31,7 @@ const defaultQueueOptions: Partial<QueueOptions> = {
 let emailQueue: Queue<EmailJobData> | null = null
 let processingQueue: Queue<ProcessingJobData> | null = null
 let webhooksQueue: Queue<WebhookJobData> | null = null
+let projectProcessingQueue: Queue<ProjectProcessingJobData> | null = null
 
 /**
  * Get or create the email queue
@@ -129,12 +131,45 @@ export async function queueWebhook(
 }
 
 /**
+ * Get or create the project processing queue
+ * Only creates queue at runtime, not during build
+ */
+export function getProjectProcessingQueue(): Queue<ProjectProcessingJobData> {
+  if (!projectProcessingQueue) {
+    projectProcessingQueue = new Queue(QUEUE_NAMES.PROJECT_PROCESSING, {
+      connection: getRedis() as any,
+      ...defaultQueueOptions,
+      defaultJobOptions: {
+        ...defaultQueueOptions.defaultJobOptions,
+        attempts: 2,
+      },
+    }) as Queue<ProjectProcessingJobData>
+  }
+  return projectProcessingQueue
+}
+
+/**
+ * Add a project processing job to the queue
+ */
+export async function queueProjectProcessing(
+  data: ProjectProcessingJobData,
+  options?: { delay?: number; priority?: number }
+) {
+  const queue = getProjectProcessingQueue()
+  return queue.add("process-project", data, {
+    delay: options?.delay,
+    priority: options?.priority,
+  })
+}
+
+/**
  * Close all queue connections gracefully
  */
 export async function closeAllQueues(): Promise<void> {
-  const queues = [emailQueue, processingQueue, webhooksQueue].filter(Boolean)
+  const queues = [emailQueue, processingQueue, webhooksQueue, projectProcessingQueue].filter(Boolean)
   await Promise.all(queues.map((q) => q?.close()))
   emailQueue = null
   processingQueue = null
   webhooksQueue = null
+  projectProcessingQueue = null
 }

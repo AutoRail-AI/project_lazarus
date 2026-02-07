@@ -1,12 +1,12 @@
 "use client"
 
-import { Loader2 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Spinner } from "@/components/ui/spinner"
 import { authClient } from "@/lib/auth/client"
 
 export function CreateOrgForm() {
@@ -32,9 +32,8 @@ export function CreateOrgForm() {
         return
       }
 
-      // Redirect to organization dashboard
       if (result.data) {
-        router.push(`/org/${result.data.slug}`)
+        router.push("/teams")
         router.refresh()
       }
     } catch (err) {
@@ -52,10 +51,11 @@ export function CreateOrgForm() {
         </Alert>
       )}
       
-      <div className="space-y-2">
-        <Label htmlFor="name">Organization Name</Label>
+      <div className="space-y-1.5">
+        <Label htmlFor="name" className="text-xs text-muted-foreground">Organization Name</Label>
         <Input
           id="name"
+          className="h-9"
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="My Organization"
@@ -64,10 +64,11 @@ export function CreateOrgForm() {
         />
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="slug">Organization Slug</Label>
+      <div className="space-y-1.5">
+        <Label htmlFor="slug" className="text-xs text-muted-foreground">Organization Slug</Label>
         <Input
           id="slug"
+          className="h-9"
           value={slug}
           onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/\s+/g, "-"))}
           placeholder="my-org"
@@ -80,14 +81,14 @@ export function CreateOrgForm() {
         </p>
       </div>
 
-      <Button type="submit" disabled={loading} className="w-full">
+      <Button type="submit" disabled={loading} size="sm" className="w-full">
         {loading ? (
           <>
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            <Spinner className="mr-2 h-3.5 w-3.5" />
             Creating...
           </>
         ) : (
-          "Create Organization"
+          "Create organization"
         )}
       </Button>
     </form>

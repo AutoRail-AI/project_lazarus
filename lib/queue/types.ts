@@ -22,8 +22,15 @@ export interface WebhookJobData {
   retries?: number
 }
 
+export interface ProjectProcessingJobData {
+  projectId: string
+  userId: string
+  githubUrl?: string
+  targetFramework?: string
+}
+
 // Union of all job data types
-export type JobData = EmailJobData | ProcessingJobData | WebhookJobData
+export type JobData = EmailJobData | ProcessingJobData | WebhookJobData | ProjectProcessingJobData
 
 // Job result types
 export interface JobResult {
@@ -38,6 +45,7 @@ export const QUEUE_NAMES = {
   EMAIL: "email",
   PROCESSING: "processing",
   WEBHOOKS: "webhooks",
+  PROJECT_PROCESSING: "project-processing",
 } as const
 
 export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES]

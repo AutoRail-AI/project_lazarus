@@ -7,8 +7,11 @@ export const env = createEnv({
       .enum(["true", "false"])
       .optional()
       .transform((value) => value === "true"),
-    // Database
-    MONGODB_URI: z.string().refine((val) => !val || /^mongodb(\+srv)?:\/\//.test(val), "Invalid MongoDB URI").optional(),
+    // Database (Supabase)
+    SUPABASE_URL: z.string().url().optional(),
+    SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
+    SUPABASE_SECRET_KEY: z.string().optional(),
+    SUPABASE_DB_URL: z.string().optional(),
     // Redis (for job queues)
     REDIS_URL: z.string().refine((val) => !val || /^redis(s)?:\/\//.test(val), "Invalid Redis URL").optional(),
     // Better Auth
@@ -26,6 +29,19 @@ export const env = createEnv({
     OPENAI_API_KEY: z.string().optional(),
     ANTHROPIC_API_KEY: z.string().optional(),
     TAVILY_API_KEY: z.string().optional(),
+    GEMINI_API_KEY: z.string().optional(),
+    OPENHANDS_API_URL: z.string().url().optional(),
+    LEFT_BRAIN_MCP_URL: z.string().url().optional(),
+    RIGHT_BRAIN_MCP_URL: z.string().url().optional(),
+    DEMO_MODE: z.enum(["true", "false"]).optional().transform((value) => value === "true"),
+    // Daytona Sandbox
+    DAYTONA_API_KEY: z.string().optional(),
+    DAYTONA_API_URL: z.string().url().optional(),
+    // Code-Synapse CLI
+    CODE_SYNAPSE_CLI_PATH: z.string().optional(),
+    CODE_SYNAPSE_SKIP_JUSTIFY: z.enum(["true", "false"]).optional().transform((value) => value === "true"),
+    // Workspaces
+    WORKSPACES_ROOT: z.string().optional(),
     // Organization Settings
     ORGANIZATION_LIMIT: z.string().optional(),
     MEMBERSHIP_LIMIT: z.string().optional(),
@@ -46,12 +62,19 @@ export const env = createEnv({
   },
   client: {
     NEXT_PUBLIC_APP_URL: z.string().refine((val) => !val || /^https?:\/\//.test(val), "Invalid URL").optional(),
+    NEXT_PUBLIC_SUPABASE_URL: z.string().url().optional(),
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().optional(),
+    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: z.string().optional(),
     NEXT_PUBLIC_POSTHOG_KEY: z.string().optional(),
     NEXT_PUBLIC_POSTHOG_HOST: z.string().refine((val) => !val || /^https?:\/\//.test(val), "Invalid URL").optional(),
+    NEXT_PUBLIC_DEMO_MODE: z.enum(["true", "false"]).optional().transform((value) => value === "true"),
   },
   runtimeEnv: {
     ANALYZE: process.env.ANALYZE,
-    MONGODB_URI: process.env.MONGODB_URI,
+    SUPABASE_URL: process.env.SUPABASE_URL,
+    SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+    SUPABASE_SECRET_KEY: process.env.SUPABASE_SECRET_KEY,
+    SUPABASE_DB_URL: process.env.SUPABASE_DB_URL,
     REDIS_URL: process.env.REDIS_URL,
     BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET,
     BETTER_AUTH_URL: process.env.BETTER_AUTH_URL,
@@ -61,10 +84,28 @@ export const env = createEnv({
     EMAIL_FROM: process.env.EMAIL_FROM,
     UPLOADTHING_TOKEN: process.env.UPLOADTHING_TOKEN,
     NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
+    NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
     // AI Agent Configuration
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,
     ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
     TAVILY_API_KEY: process.env.TAVILY_API_KEY,
+    GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+    OPENHANDS_API_URL: process.env.OPENHANDS_API_URL,
+    LEFT_BRAIN_MCP_URL: process.env.LEFT_BRAIN_MCP_URL,
+    RIGHT_BRAIN_MCP_URL: process.env.RIGHT_BRAIN_MCP_URL,
+    DEMO_MODE: process.env.DEMO_MODE,
+    // Daytona Sandbox
+    DAYTONA_API_KEY: process.env.DAYTONA_API_KEY,
+    DAYTONA_API_URL: process.env.DAYTONA_API_URL,
+    // Code-Synapse CLI
+    CODE_SYNAPSE_CLI_PATH: process.env.CODE_SYNAPSE_CLI_PATH,
+    CODE_SYNAPSE_SKIP_JUSTIFY: process.env.CODE_SYNAPSE_SKIP_JUSTIFY,
+    // Workspaces
+    WORKSPACES_ROOT: process.env.WORKSPACES_ROOT,
+    NEXT_PUBLIC_DEMO_MODE: process.env.NEXT_PUBLIC_DEMO_MODE,
     // Organization Settings
     ORGANIZATION_LIMIT: process.env.ORGANIZATION_LIMIT,
     MEMBERSHIP_LIMIT: process.env.MEMBERSHIP_LIMIT,
@@ -82,7 +123,5 @@ export const env = createEnv({
     SENTRY_AUTH_TOKEN: process.env.SENTRY_AUTH_TOKEN,
     // Feature Flags
     FEATURE_FLAGS_ENABLED: process.env.FEATURE_FLAGS_ENABLED,
-    NEXT_PUBLIC_POSTHOG_KEY: process.env.NEXT_PUBLIC_POSTHOG_KEY,
-    NEXT_PUBLIC_POSTHOG_HOST: process.env.NEXT_PUBLIC_POSTHOG_HOST,
   },
 })

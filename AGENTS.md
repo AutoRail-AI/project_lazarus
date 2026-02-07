@@ -4,7 +4,7 @@ This file provides guidance to Cursor AI agents when working with code in this r
 
 ## Project Overview
 
-**Modern Next.js Boilerplate** - A production-ready Next.js starter with authentication, MongoDB, background job processing, and modern tooling. Built with Next.js 16, React 19, and Tailwind CSS v4.
+**Project Lazarus** - A production-ready Next.js starter with authentication, MongoDB, background job processing, and modern tooling. Built with Next.js 16, React 19, and Tailwind CSS v4.
 
 ### What This Boilerplate Provides
 

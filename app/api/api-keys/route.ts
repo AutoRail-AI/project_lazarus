@@ -21,14 +21,14 @@ export async function GET(req: NextRequest) {
   // Don't expose full keys, only prefixes
   return NextResponse.json(
     keys.map((key) => ({
-      id: key._id.toString(),
+      id: key.id,
       name: key.name,
-      keyPrefix: key.keyPrefix,
-      lastUsedAt: key.lastUsedAt,
-      expiresAt: key.expiresAt,
+      keyPrefix: key.key_prefix,
+      lastUsedAt: key.last_used_at,
+      expiresAt: key.expires_at,
       scopes: key.scopes,
       enabled: key.enabled,
-      createdAt: key.createdAt,
+      createdAt: key.created_at,
     }))
   )
 }
@@ -61,13 +61,13 @@ export async function POST(req: NextRequest) {
 
   // Return plain key only once (user should save it)
   return NextResponse.json({
-    id: apiKey._id.toString(),
+    id: apiKey.id,
     name: apiKey.name,
     key: plainKey, // Only returned once
-    keyPrefix: apiKey.keyPrefix,
+    keyPrefix: apiKey.key_prefix,
     scopes: apiKey.scopes,
-    expiresAt: apiKey.expiresAt,
-    createdAt: apiKey.createdAt,
+    expiresAt: apiKey.expires_at,
+    createdAt: apiKey.created_at,
   })
 }
 

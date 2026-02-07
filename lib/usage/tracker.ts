@@ -1,5 +1,5 @@
-import mongoose, { Schema } from "mongoose"
-import { connectDB } from "@/lib/db/mongoose"
+import { supabase } from "@/lib/db"
+import type { Database } from "@/lib/db/types"
 
 export type UsageType =
   | "api_call"
@@ -8,122 +8,91 @@ export type UsageType =
   | "bandwidth"
   | "feature_usage"
 
-export interface IUsage extends mongoose.Document {
+export type Usage = Database["public"]["Tables"]["usage"]["Row"]
+
+// Track usage
+export async function trackUsage(data: {
   userId: string
   organizationId?: string
   apiKeyId?: string
   type: UsageType
-  resource: string // e.g., "openai.gpt-4", "storage.files"
-  quantity: number // e.g., tokens, bytes, requests
-  cost?: number // Cost in cents
+  resource: string
+  quantity: number
+  cost?: number
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   metadata?: Record<string, any>
-  timestamp: Date
-  createdAt: Date
-}
-
-const UsageSchema = new Schema<IUsage>(
-  {
-    userId: { type: String, required: true, index: true },
-    organizationId: { type: String, index: true },
-    apiKeyId: { type: String, index: true },
-    type: {
-      type: String,
-      enum: ["api_call", "ai_request", "storage", "bandwidth", "feature_usage"],
-      required: true,
-      index: true,
-    },
-    resource: { type: String, required: true, index: true },
-    quantity: { type: Number, required: true },
-    cost: { type: Number }, // Cost in cents
-    metadata: { type: Schema.Types.Mixed },
-    timestamp: { type: Date, default: Date.now, index: true },
-  },
-  { timestamps: true }
-)
-
-// Indexes for common queries
-UsageSchema.index({ userId: 1, timestamp: -1 })
-UsageSchema.index({ organizationId: 1, timestamp: -1 })
-UsageSchema.index({ type: 1, resource: 1, timestamp: -1 })
-
-export const Usage =
-  mongoose.models.Usage ||
-  mongoose.model<IUsage>("Usage", UsageSchema)
-
-// Track usage
-export async function trackUsage(
-  data: {
-    userId: string
-    organizationId?: string
-    apiKeyId?: string
-    type: UsageType
-    resource: string
-    quantity: number
-    cost?: number
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    metadata?: Record<string, any>
-  }
-): Promise<void> {
-  await connectDB()
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await (Usage as any).create({
-    userId: data.userId,
-    organizationId: data.organizationId,
-    apiKeyId: data.apiKeyId,
+}): Promise<void> {
+  const { error } = await (supabase as any).from("usage").insert({
+    user_id: data.userId,
+    organization_id: data.organizationId,
+    api_key_id: data.apiKeyId,
     type: data.type,
     resource: data.resource,
     quantity: data.quantity,
     cost: data.cost,
     metadata: data.metadata,
-    timestamp: new Date(),
+    timestamp: new Date().toISOString(),
   })
+
+  if (error) {
+    console.error("Failed to track usage:", error)
+  }
 }
 
 // Get usage stats
-export async function getUsageStats(
-  filters: {
-    userId?: string
-    organizationId?: string
-    type?: UsageType
-    resource?: string
-    startDate?: Date
-    endDate?: Date
-  }
-): Promise<{
+export async function getUsageStats(filters: {
+  userId?: string
+  organizationId?: string
+  type?: UsageType
+  resource?: string
+  startDate?: Date
+  endDate?: Date
+}): Promise<{
   totalQuantity: number
   totalCost: number
   count: number
   breakdown: Array<{ resource: string; quantity: number; cost: number }>
 }> {
-  await connectDB()
+  let query = (supabase as any).from("usage").select("*")
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const query: any = {}
-
-  if (filters.userId) query.userId = filters.userId
-  if (filters.organizationId) query.organizationId = filters.organizationId
-  if (filters.type) query.type = filters.type
-  if (filters.resource) query.resource = filters.resource
-
-  if (filters.startDate || filters.endDate) {
-    query.timestamp = {}
-    if (filters.startDate) query.timestamp.$gte = filters.startDate
-    if (filters.endDate) query.timestamp.$lte = filters.endDate
+  if (filters.userId) {
+    query = query.eq("user_id", filters.userId)
+  }
+  if (filters.organizationId) {
+    query = query.eq("organization_id", filters.organizationId)
+  }
+  if (filters.type) {
+    query = query.eq("type", filters.type)
+  }
+  if (filters.resource) {
+    query = query.eq("resource", filters.resource)
+  }
+  if (filters.startDate) {
+    query = query.gte("timestamp", filters.startDate.toISOString())
+  }
+  if (filters.endDate) {
+    query = query.lte("timestamp", filters.endDate.toISOString())
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const usage = await (Usage as any).find(query)
+  const { data, error } = await query
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const totalQuantity = usage.reduce((sum: number, u: any) => sum + u.quantity, 0)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const totalCost = usage.reduce((sum: number, u: any) => sum + (u.cost || 0), 0)
+  if (error) {
+    console.error("Failed to get usage stats:", error)
+    return { totalQuantity: 0, totalCost: 0, count: 0, breakdown: [] }
+  }
+
+  const totalQuantity = data.reduce(
+    (sum: number, u: Usage) => sum + u.quantity,
+    0
+  )
+  const totalCost = data.reduce(
+    (sum: number, u: Usage) => sum + (u.cost || 0),
+    0
+  )
 
   // Breakdown by resource
   const breakdownMap = new Map<string, { quantity: number; cost: number }>()
-  for (const u of usage) {
+  for (const u of data) {
     const existing = breakdownMap.get(u.resource) || { quantity: 0, cost: 0 }
     breakdownMap.set(u.resource, {
       quantity: existing.quantity + u.quantity,
@@ -131,15 +100,17 @@ export async function getUsageStats(
     })
   }
 
-  const breakdown = Array.from(breakdownMap.entries()).map(([resource, data]) => ({
-    resource,
-    ...data,
-  }))
+  const breakdown = Array.from(breakdownMap.entries()).map(
+    ([resource, data]) => ({
+      resource,
+      ...data,
+    })
+  )
 
   return {
     totalQuantity,
     totalCost,
-    count: usage.length,
+    count: data.length,
     breakdown,
   }
 }
@@ -157,52 +128,67 @@ export async function checkQuota(
   organizationId: string | undefined,
   quota: Quota
 ): Promise<{ allowed: boolean; remaining: number; resetAt: Date }> {
-  await connectDB()
-
   const now = new Date()
   const windowStart = new Date(now.getTime() - quota.windowMs)
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const query: any = {
-    userId,
-    type: quota.type,
-    timestamp: { $gte: windowStart },
-  }
-
-  if (quota.resource) {
-    query.resource = quota.resource
-  }
-
   // Check organization-level quota if provided
   if (organizationId) {
-    const orgUsage = await Usage.aggregate([
-      {
-        $match: {
-          organizationId,
-          type: quota.type,
-          timestamp: { $gte: windowStart },
-          ...(quota.resource && { resource: quota.resource }),
-        },
-      },
-      { $group: { _id: null, total: { $sum: "$quantity" } } },
-    ])
+    let orgQuery = (supabase as any)
+      .from("usage")
+      .select("quantity")
+      .eq("organization_id", organizationId)
+      .eq("type", quota.type)
+      .gte("timestamp", windowStart.toISOString())
 
-    const orgTotal = orgUsage[0]?.total || 0
-    if (orgTotal >= quota.limit) {
-      return {
-        allowed: false,
-        remaining: 0,
-        resetAt: new Date(now.getTime() + quota.windowMs),
+    if (quota.resource) {
+      orgQuery = orgQuery.eq("resource", quota.resource)
+    }
+
+    const { data: orgData, error: orgError } = await orgQuery
+
+    if (!orgError && orgData) {
+      const orgTotal = orgData.reduce(
+        (sum: number, u: Usage) => sum + u.quantity,
+        0
+      )
+      if (orgTotal >= quota.limit) {
+        return {
+          allowed: false,
+          remaining: 0,
+          resetAt: new Date(now.getTime() + quota.windowMs),
+        }
       }
     }
   }
 
-  const userUsage = await Usage.aggregate([
-    { $match: query },
-    { $group: { _id: null, total: { $sum: "$quantity" } } },
-  ])
+  // Check user-level quota
+  let userQuery = (supabase as any)
+    .from("usage")
+    .select("quantity")
+    .eq("user_id", userId)
+    .eq("type", quota.type)
+    .gte("timestamp", windowStart.toISOString())
 
-  const userTotal = userUsage[0]?.total || 0
+  if (quota.resource) {
+    userQuery = userQuery.eq("resource", quota.resource)
+  }
+
+  const { data: userData, error: userError } = await userQuery
+
+  if (userError) {
+    console.error("Failed to check quota:", userError)
+    // Fail open if error, or closed? Let's fail open for now but log it.
+    return {
+      allowed: true,
+      remaining: quota.limit,
+      resetAt: new Date(now.getTime() + quota.windowMs),
+    }
+  }
+
+  const userTotal = userData.reduce(
+    (sum: number, u: Usage) => sum + u.quantity,
+    0
+  )
   const remaining = Math.max(0, quota.limit - userTotal)
 
   return {
@@ -211,4 +197,3 @@ export async function checkQuota(
     resetAt: new Date(now.getTime() + quota.windowMs),
   }
 }
-

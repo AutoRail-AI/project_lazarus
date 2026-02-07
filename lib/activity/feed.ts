@@ -1,5 +1,5 @@
-import mongoose, { Schema } from "mongoose"
-import { connectDB } from "@/lib/db/mongoose"
+import { supabase } from "@/lib/db"
+import type { Database } from "@/lib/db/types"
 
 export type ActivityType =
   | "user.created"
@@ -18,65 +18,39 @@ export type ActivityType =
   | "subscription.created"
   | "subscription.updated"
 
-export interface IActivity extends mongoose.Document {
+export type Activity = Database["public"]["Tables"]["activities"]["Row"]
+
+// Create activity
+export async function createActivity(data: {
   userId?: string
-  organizationId?: string
+  organizationId: string
   type: ActivityType
-  action: string // Human-readable action
-  resource: string // Resource type
+  action: string
+  resource: string
   resourceId?: string
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   metadata?: Record<string, any>
-  createdAt: Date
-}
+}): Promise<Activity | null> {
+  const { data: activity, error } = await (supabase as any)
+    .from("activities")
+    .insert({
+      user_id: data.userId,
+      organization_id: data.organizationId,
+      type: data.type,
+      action: data.action,
+      resource: data.resource,
+      resource_id: data.resourceId,
+      metadata: data.metadata,
+    })
+    .select()
+    .single()
 
-const ActivitySchema = new Schema<IActivity>(
-  {
-    userId: { type: String, index: true },
-    organizationId: { type: String, required: true, index: true },
-    type: { type: String, required: true, index: true },
-    action: { type: String, required: true },
-    resource: { type: String, required: true },
-    resourceId: { type: String, index: true },
-    metadata: { type: Schema.Types.Mixed },
-  },
-  { timestamps: true }
-)
-
-// Indexes for efficient queries
-ActivitySchema.index({ organizationId: 1, createdAt: -1 })
-ActivitySchema.index({ userId: 1, createdAt: -1 })
-ActivitySchema.index({ resource: 1, resourceId: 1 })
-
-export const Activity =
-  mongoose.models.Activity ||
-  mongoose.model<IActivity>("Activity", ActivitySchema)
-
-// Create activity
-export async function createActivity(
-  data: {
-    userId?: string
-    organizationId: string
-    type: ActivityType
-    action: string
-    resource: string
-    resourceId?: string
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    metadata?: Record<string, any>
+  if (error) {
+    console.error("Failed to create activity:", error)
+    return null
   }
-): Promise<IActivity> {
-  await connectDB()
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (Activity as any).create({
-    userId: data.userId,
-    organizationId: data.organizationId,
-    type: data.type,
-    action: data.action,
-    resource: data.resource,
-    resourceId: data.resourceId,
-    metadata: data.metadata,
-  })
+  return activity
 }
 
 // Get activity feed
@@ -89,28 +63,35 @@ export async function getActivityFeed(
     limit?: number
     before?: Date
   } = {}
-): Promise<IActivity[]> {
-  await connectDB()
+): Promise<Activity[]> {
+  let query = supabase
+    .from("activities")
+    .select("*")
+    .eq("organization_id", organizationId)
+    .order("created_at", { ascending: false })
+    .limit(options.limit || 50)
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const query: any = { organizationId }
   if (options.userId) {
-    query.userId = options.userId
+    query = query.eq("user_id", options.userId)
   }
   if (options.resource) {
-    query.resource = options.resource
+    query = query.eq("resource", options.resource)
   }
   if (options.resourceId) {
-    query.resourceId = options.resourceId
+    query = query.eq("resource_id", options.resourceId)
   }
   if (options.before) {
-    query.createdAt = { $lt: options.before }
+    query = query.lt("created_at", options.before.toISOString())
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (Activity as any).find(query)
-    .sort({ createdAt: -1 })
-    .limit(options.limit || 50)
+  const { data, error } = await query
+
+  if (error) {
+    console.error("Failed to fetch activity feed:", error)
+    return []
+  }
+
+  return data
 }
 
 // Get user activity
@@ -120,18 +101,24 @@ export async function getUserActivity(
     organizationId?: string
     limit?: number
   } = {}
-): Promise<IActivity[]> {
-  await connectDB()
+): Promise<Activity[]> {
+  let query = supabase
+    .from("activities")
+    .select("*")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(options.limit || 50)
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const query: any = { userId }
   if (options.organizationId) {
-    query.organizationId = options.organizationId
+    query = query.eq("organization_id", options.organizationId)
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (Activity as any).find(query)
-    .sort({ createdAt: -1 })
-    .limit(options.limit || 50)
-}
+  const { data, error } = await query
 
+  if (error) {
+    console.error("Failed to fetch user activity:", error)
+    return []
+  }
+
+  return data
+}

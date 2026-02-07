@@ -2,7 +2,7 @@
 
 import { AlertCircle, Lock, Mail } from "lucide-react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useState } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -11,8 +11,18 @@ import { Label } from "@/components/ui/label"
 import { Spinner } from "@/components/ui/spinner"
 import { signIn } from "@/lib/auth/client"
 
+/** Allow only relative paths to prevent open redirects. */
+function getSafeCallbackUrl(callbackUrl: string | null): string | null {
+  if (!callbackUrl || typeof callbackUrl !== "string") return null
+  const decoded = decodeURIComponent(callbackUrl.trim())
+  if (!decoded.startsWith("/") || decoded.startsWith("//")) return null
+  return decoded
+}
+
 export function LoginForm() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const callbackUrl = getSafeCallbackUrl(searchParams.get("callbackUrl"))
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState<string | null>(null)
@@ -34,7 +44,12 @@ export function LoginForm() {
         return
       }
 
-      router.push("/")
+      // const statusRes = await fetch("/api/onboarding/status", { credentials: "include" })
+      // const status = statusRes.ok ? ((await statusRes.json()) as { complete?: boolean }) : null
+      // const redirectTo =
+      //   status?.complete === true ? (callbackUrl ?? "/dashboard") : "/onboarding"
+      const redirectTo = callbackUrl ?? "/dashboard"
+      router.push(redirectTo)
       router.refresh()
     } catch (err) {
       setError("An unexpected error occurred")
@@ -63,7 +78,7 @@ export function LoginForm() {
             placeholder="you@example.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="h-9 pl-10"
+            className="h-9 pl-10 bg-secondary/20 border-input/50 focus:bg-secondary/40 transition-colors"
             required
             disabled={isLoading}
           />
@@ -88,7 +103,7 @@ export function LoginForm() {
             placeholder="Enter your password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="h-9 pl-10"
+            className="h-9 pl-10 bg-secondary/20 border-input/50 focus:bg-secondary/40 transition-colors"
             required
             disabled={isLoading}
           />

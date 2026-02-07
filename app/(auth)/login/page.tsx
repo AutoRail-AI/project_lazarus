@@ -1,6 +1,6 @@
 import type { Metadata } from "next"
+import { Suspense } from "react"
 import { LoginForm, OAuthButtons } from "@/components/auth"
-import { Separator } from "@/components/ui/separator"
 
 export const metadata: Metadata = {
   title: "Sign In",
@@ -19,19 +19,9 @@ export default function LoginPage() {
 
       <div className="space-y-4">
         <OAuthButtons mode="login" />
-
-        <div className="relative">
-          <div className="absolute inset-0 flex items-center">
-            <Separator className="w-full" />
-          </div>
-          <div className="relative flex justify-center text-xs uppercase">
-            <span className="bg-background px-2 text-muted-foreground">
-              Or continue with email
-            </span>
-          </div>
-        </div>
-
-        <LoginForm />
+        <Suspense fallback={null}>
+          <LoginForm />
+        </Suspense>
       </div>
     </div>
   )

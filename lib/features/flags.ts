@@ -1,37 +1,7 @@
-import mongoose, { Schema } from "mongoose"
-import { connectDB } from "@/lib/db/mongoose"
+import { supabase } from "@/lib/db"
+import type { Database } from "@/lib/db/types"
 
-// Feature flag model
-export interface IFeatureFlag extends mongoose.Document {
-  key: string
-  name: string
-  description: string
-  enabled: boolean
-  rolloutPercentage: number // 0-100
-  targetUsers?: string[] // User IDs
-  targetOrganizations?: string[] // Organization IDs
-  environments: string[] // ["development", "production"]
-  createdAt: Date
-  updatedAt: Date
-}
-
-const FeatureFlagSchema = new Schema<IFeatureFlag>(
-  {
-    key: { type: String, required: true, unique: true, index: true },
-    name: { type: String, required: true },
-    description: { type: String },
-    enabled: { type: Boolean, default: false },
-    rolloutPercentage: { type: Number, default: 100, min: 0, max: 100 },
-    targetUsers: [{ type: String }],
-    targetOrganizations: [{ type: String }],
-    environments: [{ type: String, default: ["production"] }],
-  },
-  { timestamps: true }
-)
-
-export const FeatureFlag =
-  mongoose.models.FeatureFlag ||
-  mongoose.model<IFeatureFlag>("FeatureFlag", FeatureFlagSchema)
+export type FeatureFlag = Database["public"]["Tables"]["feature_flags"]["Row"]
 
 // Check if feature is enabled
 export async function isFeatureEnabled(
@@ -39,11 +9,15 @@ export async function isFeatureEnabled(
   userId?: string,
   organizationId?: string
 ): Promise<boolean> {
-  await connectDB()
+  const { data: flag, error } = await (supabase as any)
+    .from("feature_flags")
+    .select("*")
+    .eq("key", key)
+    .single()
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const flag = await (FeatureFlag as any).findOne({ key })
-  if (!flag) return false
+  if (error || !flag) {
+    return false
+  }
 
   // Check environment
   const env = process.env.NODE_ENV || "development"
@@ -52,22 +26,22 @@ export async function isFeatureEnabled(
   if (!flag.enabled) return false
 
   // Check if user is in target list
-  if (userId && flag.targetUsers?.includes(userId)) {
+  if (userId && flag.target_users?.includes(userId)) {
     return true
   }
 
   // Check if organization is in target list
-  if (organizationId && flag.targetOrganizations?.includes(organizationId)) {
+  if (organizationId && flag.target_organizations?.includes(organizationId)) {
     return true
   }
 
   // Check rollout percentage
-  if (flag.rolloutPercentage < 100) {
+  if (flag.rollout_percentage < 100) {
     // Simple hash-based rollout
     const hash = userId
       ? hashString(userId + key)
       : hashString(organizationId + key || key)
-    return hash % 100 < flag.rolloutPercentage
+    return hash % 100 < flag.rollout_percentage
   }
 
   return true
@@ -78,14 +52,44 @@ export async function getEnabledFeatures(
   userId?: string,
   organizationId?: string
 ): Promise<string[]> {
-  await connectDB()
+  const { data: flags, error } = await (supabase as any)
+    .from("feature_flags")
+    .select("*")
+    .eq("enabled", true)
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const flags = await (FeatureFlag as any).find({ enabled: true })
+  if (error || !flags) {
+    return []
+  }
+
   const enabled: string[] = []
 
   for (const flag of flags) {
-    if (await isFeatureEnabled(flag.key, userId, organizationId)) {
+    // We can optimize this by checking flags in parallel or batch, but for now simple loop is fine
+    // Actually, we can reuse the logic but we need to pass the flag object, not fetch it again.
+    // Let's refactor isFeatureEnabled to accept flag object optionally, or just copy logic.
+    // Copying logic for performance to avoid N+1 fetches.
+
+    const env = process.env.NODE_ENV || "development"
+    if (!flag.environments.includes(env)) continue
+
+    if (userId && flag.target_users?.includes(userId)) {
+      enabled.push(flag.key)
+      continue
+    }
+
+    if (organizationId && flag.target_organizations?.includes(organizationId)) {
+      enabled.push(flag.key)
+      continue
+    }
+
+    if (flag.rollout_percentage < 100) {
+      const hash = userId
+        ? hashString(userId + flag.key)
+        : hashString(organizationId + flag.key || flag.key)
+      if (hash % 100 < flag.rollout_percentage) {
+        enabled.push(flag.key)
+      }
+    } else {
       enabled.push(flag.key)
     }
   }
@@ -103,4 +107,3 @@ function hashString(str: string): number {
   }
   return Math.abs(hash)
 }
-

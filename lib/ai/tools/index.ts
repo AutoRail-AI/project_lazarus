@@ -1,5 +1,4 @@
-import mongoose from "mongoose"
-import { connectDB } from "@/lib/db/mongodb"
+import { supabase } from "@/lib/db"
 import type { AgentTool } from "../types"
 
 export const databaseTool: AgentTool = {
@@ -8,28 +7,40 @@ export const databaseTool: AgentTool = {
   parameters: {
     type: "object",
     properties: {
-      collection: {
+      table: {
         type: "string",
-        description: "The collection name (e.g., 'user', 'organization')",
+        description: "The table name (e.g., 'user', 'organization', 'projects')",
       },
-      query: {
+      filters: {
         type: "object",
-        description: "MongoDB query object (as JSON string)",
+        description: "Filter object (key-value pairs for equality check)",
       },
       limit: {
         type: "number",
         description: "Maximum number of results (default: 10)",
       },
     },
-    required: ["collection", "query"],
+    required: ["table"],
   },
-  handler: async ({ collection, query, limit = 10 }) => {
+  handler: async ({ table, filters, limit = 10 }) => {
     try {
-      await connectDB()
-      const queryObj = typeof query === "string" ? JSON.parse(query) : query
-      const coll = mongoose.connection.collection(collection)
-      const results = await coll.find(queryObj).limit(limit).toArray()
-      return { success: true, results, count: results.length }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let query = (supabase as any).from(table).select("*").limit(limit)
+
+      if (filters) {
+        const filterObj = typeof filters === "string" ? JSON.parse(filters) : filters
+        Object.entries(filterObj).forEach(([key, value]) => {
+          query = query.eq(key, value)
+        })
+      }
+
+      const { data, error } = await query
+
+      if (error) {
+        return { success: false, error: error.message }
+      }
+
+      return { success: true, results: data, count: data.length }
     } catch (error) {
       return {
         success: false,
@@ -105,21 +116,7 @@ export const webSearchTool: AgentTool = {
   },
   handler: async ({ query: _query, maxResults: _maxResults = 5 }) => {
     // Placeholder implementation
-    // In production, integrate with a search API like Tavily, Serper, or Google Custom Search
     try {
-      // Example: You could use Tavily API
-      // const response = await fetch("https://api.tavily.com/search", {
-      //   method: "POST",
-      //   headers: { "Content-Type": "application/json" },
-      //   body: JSON.stringify({
-      //     api_key: process.env.TAVILY_API_KEY,
-      //     query,
-      //     max_results: maxResults,
-      //   }),
-      // })
-      // const data = await response.json()
-      // return { success: true, results: data.results }
-      
       return {
         success: true,
         message: "Web search not configured. Please set up a search API (Tavily, Serper, etc.)",
@@ -136,4 +133,3 @@ export const webSearchTool: AgentTool = {
 
 // Export all tools
 export const defaultTools = [databaseTool, emailTool, webSearchTool]
-

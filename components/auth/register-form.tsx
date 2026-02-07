@@ -116,7 +116,7 @@ export function RegisterForm() {
             placeholder="John Doe"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="h-9 pl-10"
+            className="h-9 pl-10 bg-secondary/20 border-input/50 focus:bg-secondary/40 transition-colors"
             required
             disabled={isLoading}
           />
@@ -133,7 +133,7 @@ export function RegisterForm() {
             placeholder="you@example.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="h-9 pl-10"
+            className="h-9 pl-10 bg-secondary/20 border-input/50 focus:bg-secondary/40 transition-colors"
             required
             disabled={isLoading}
           />
@@ -150,7 +150,7 @@ export function RegisterForm() {
             placeholder="Create a password (min. 8 characters)"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="h-9 pl-10"
+            className="h-9 pl-10 bg-secondary/20 border-input/50 focus:bg-secondary/40 transition-colors"
             required
             minLength={8}
             disabled={isLoading}
@@ -168,7 +168,7 @@ export function RegisterForm() {
             placeholder="Confirm your password"
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
-            className="h-9 pl-10"
+            className="h-9 pl-10 bg-secondary/20 border-input/50 focus:bg-secondary/40 transition-colors"
             required
             disabled={isLoading}
           />

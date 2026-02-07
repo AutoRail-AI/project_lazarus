@@ -1,9 +1,11 @@
-// Prisma client for Better Auth
-export { prisma } from "./prisma"
-
-// Mongoose connection for application features
-export { getModel, getCollection } from "./mongodb"
-export { default as connectDB } from "./mongoose"
-
-// Re-export for convenience
-export { default as mongoose } from "mongoose"
+export { supabase } from "./supabase"
+export { getSupabaseBrowserClient } from "./supabase-browser"
+export type {
+  Database,
+  ProjectStatus,
+  AssetType,
+  SliceStatus,
+  AgentEventType,
+  SubscriptionStatus,
+  PlanId,
+} from "./types"

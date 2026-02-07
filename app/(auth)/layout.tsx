@@ -1,4 +1,4 @@
-import Link from "next/link"
+import { Logo } from "@/components/branding"
 import { APP_NAME } from "@/lib/utils/constants"
 
 export default function AuthLayout({
@@ -8,14 +8,19 @@ export default function AuthLayout({
 }) {
   return (
     <div className="min-h-screen flex">
-      {/* Left side - Branding */}
-      <div className="hidden lg:flex lg:w-1/2 bg-brand-gradient relative overflow-hidden">
+      {/* Left side - Branding (Rail Fade gradient) */}
+      <div className="hidden lg:flex lg:w-1/2 bg-rail-fade relative overflow-hidden">
         <div className="absolute inset-0 bg-black/10" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,var(--tw-gradient-stops))] from-white/10 to-transparent opacity-50" />
         <div className="relative z-10 flex flex-col justify-between p-12 text-white">
           <div>
-            <Link href="/" className="flex items-center space-x-2">
-              <span className="text-2xl font-bold">{APP_NAME}</span>
-            </Link>
+            <Logo
+              variant="on-brand"
+              size={40}
+              href="/"
+              iconWrapperClassName="rounded-xl bg-white/10 p-2 shadow-lg backdrop-blur-sm ring-1 ring-white/20"
+              className="drop-shadow-md"
+            />
           </div>
 
           <div className="space-y-6">
@@ -45,13 +50,9 @@ export default function AuthLayout({
       {/* Right side - Auth forms */}
       <div className="flex-1 flex items-center justify-center p-8">
         <div className="w-full max-w-md space-y-8">
-          {/* Mobile logo */}
+          {/* Mobile logo (Void Black background) */}
           <div className="lg:hidden text-center">
-            <Link href="/" className="inline-flex items-center space-x-2">
-              <span className="text-2xl font-bold text-brand-gradient">
-                {APP_NAME}
-              </span>
-            </Link>
+            <Logo variant="on-dark" size={32} href="/" />
           </div>
 
           {children}

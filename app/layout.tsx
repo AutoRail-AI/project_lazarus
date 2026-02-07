@@ -1,41 +1,48 @@
 import type { Metadata } from "next"
-import { Poppins, Sofia_Sans_Extra_Condensed } from "next/font/google"
+import { Inter, JetBrains_Mono, Space_Grotesk } from "next/font/google"
 import { Providers } from "@/components/providers"
 import "styles/tailwind.css"
 
-// Primary font: Poppins (Semi Bold for headings, Regular for body)
-const poppins = Poppins({
+// Heading font: Space Grotesk (Semi Bold for headings)
+const spaceGrotesk = Space_Grotesk({
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
-  variable: "--font-poppins",
+  variable: "--font-space-grotesk",
   display: "swap",
 })
 
-// Accent font: Sofia Sans Extra Condensed (for labels, tags, decorative)
-const sofiaSans = Sofia_Sans_Extra_Condensed({
+// Body font: Inter
+const inter = Inter({
   subsets: ["latin"],
-  weight: ["400"],
-  variable: "--font-sofia",
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-inter-var",
+  display: "swap",
+})
+
+// Mono font: JetBrains Mono (code blocks)
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500"],
+  variable: "--font-jetbrains",
   display: "swap",
 })
 
 export const metadata: Metadata = {
   title: {
-    default: "AppealGen AI - Medical Denial Appeal Generator | 10XR",
-    template: "%s | AppealGen AI",
+    default: "Project Lazarus - Reincarnate Legacy Software",
+    template: "%s | Project Lazarus",
   },
   description:
-    "AppealGen AI by 10XR - AI-powered medical denial appeal generator. Generate citation-backed appeals in seconds, not hours.",
+    "Project Lazarus transmutes legacy software into modern web applications using AI agents with test-first development and self-healing loops.",
   keywords: [
-    "medical appeals",
-    "denial appeals",
-    "healthcare",
-    "AI",
-    "medical necessity",
-    "insurance appeals",
-    "10XR",
+    "legacy migration",
+    "software modernization",
+    "AI agents",
+    "code generation",
+    "Next.js",
+    "automated testing",
   ],
-  authors: [{ name: "10XR", url: "https://10xr.co" }],
+  authors: [{ name: "Project Lazarus" }],
 }
 
 export default function RootLayout({
@@ -46,7 +53,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${poppins.variable} ${sofiaSans.variable}`}
+      className={`${spaceGrotesk.variable} ${inter.variable} ${jetbrainsMono.variable}`}
       suppressHydrationWarning
     >
       <body className="min-h-screen bg-background font-sans antialiased">

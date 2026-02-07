@@ -1,47 +1,8 @@
-import mongoose, { Schema } from "mongoose"
 import crypto from "crypto"
-import { connectDB } from "@/lib/db/mongoose"
+import { supabase } from "@/lib/db"
+import type { Database } from "@/lib/db/types"
 
-export interface IApiKey extends mongoose.Document {
-  userId: string
-  organizationId?: string
-  name: string
-  key: string // Hashed key
-  keyPrefix: string // First 8 chars for display (e.g., "sk_live_ab")
-  lastUsedAt?: Date
-  expiresAt?: Date
-  scopes: string[]
-  rateLimit?: {
-    requests: number
-    windowMs: number
-  }
-  enabled: boolean
-  createdAt: Date
-  updatedAt: Date
-}
-
-const ApiKeySchema = new Schema<IApiKey>(
-  {
-    userId: { type: String, required: true, index: true },
-    organizationId: { type: String, index: true },
-    name: { type: String, required: true },
-    key: { type: String, required: true, unique: true, index: true },
-    keyPrefix: { type: String, required: true },
-    lastUsedAt: { type: Date },
-    expiresAt: { type: Date },
-    scopes: [{ type: String }],
-    rateLimit: {
-      requests: { type: Number },
-      windowMs: { type: Number },
-    },
-    enabled: { type: Boolean, default: true },
-  },
-  { timestamps: true }
-)
-
-export const ApiKey =
-  mongoose.models.ApiKey ||
-  mongoose.model<IApiKey>("ApiKey", ApiKeySchema)
+export type ApiKey = Database["public"]["Tables"]["api_keys"]["Row"]
 
 // Generate API key
 export function generateApiKey(prefix: string = "sk_live"): string {
@@ -56,25 +17,32 @@ export function hashApiKey(key: string): string {
 }
 
 // Verify API key
-export async function verifyApiKey(
-  key: string
-): Promise<IApiKey | null> {
-  await connectDB()
-
+export async function verifyApiKey(key: string): Promise<ApiKey | null> {
   const hashedKey = hashApiKey(key)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const apiKey = await (ApiKey as any).findOne({ key: hashedKey, enabled: true })
 
-  if (!apiKey) return null
+  const { data: apiKey, error } = await (supabase as any)
+    .from("api_keys")
+    .select("*")
+    .eq("key", hashedKey)
+    .eq("enabled", true)
+    .single()
+
+  if (error || !apiKey) {
+    return null
+  }
 
   // Check expiration
-  if (apiKey.expiresAt && apiKey.expiresAt < new Date()) {
+  if (apiKey.expires_at && new Date(apiKey.expires_at) < new Date()) {
     return null
   }
 
   // Update last used
-  apiKey.lastUsedAt = new Date()
-  await apiKey.save()
+  // Fire and forget update
+  ;(supabase as any)
+    .from("api_keys")
+    .update({ last_used_at: new Date().toISOString() })
+    .eq("id", apiKey.id)
+    .then()
 
   return apiKey
 }
@@ -89,25 +57,30 @@ export async function createApiKey(
     expiresAt?: Date
     rateLimit?: { requests: number; windowMs: number }
   }
-): Promise<{ apiKey: IApiKey; plainKey: string }> {
-  await connectDB()
-
+): Promise<{ apiKey: ApiKey; plainKey: string }> {
   const plainKey = generateApiKey()
   const hashedKey = hashApiKey(plainKey)
   const keyPrefix = plainKey.substring(0, 12) // "sk_live_ab"
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const apiKey = await (ApiKey as any).create({
-    userId,
-    organizationId: options.organizationId,
-    name,
-    key: hashedKey,
-    keyPrefix,
-    scopes: options.scopes || ["read", "write"],
-    expiresAt: options.expiresAt,
-    rateLimit: options.rateLimit,
-    enabled: true,
-  })
+  const { data: apiKey, error } = await (supabase as any)
+    .from("api_keys")
+    .insert({
+      user_id: userId,
+      organization_id: options.organizationId,
+      name,
+      key: hashedKey,
+      key_prefix: keyPrefix,
+      scopes: options.scopes || ["read", "write"],
+      expires_at: options.expiresAt?.toISOString(),
+      rate_limit: options.rateLimit,
+      enabled: true,
+    })
+    .select()
+    .single()
+
+  if (error) {
+    throw new Error(`Failed to create API key: ${error.message}`)
+  }
 
   return { apiKey, plainKey }
 }
@@ -116,17 +89,25 @@ export async function createApiKey(
 export async function listApiKeys(
   userId: string,
   organizationId?: string
-): Promise<IApiKey[]> {
-  await connectDB()
+): Promise<ApiKey[]> {
+  let query = (supabase as any)
+    .from("api_keys")
+    .select("*")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const query: any = { userId }
   if (organizationId) {
-    query.organizationId = organizationId
+    query = query.eq("organization_id", organizationId)
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (ApiKey as any).find(query).sort({ createdAt: -1 })
+  const { data, error } = await query
+
+  if (error) {
+    console.error("Failed to list API keys:", error)
+    return []
+  }
+
+  return data
 }
 
 // Revoke API key
@@ -134,12 +115,14 @@ export async function revokeApiKey(
   keyId: string,
   userId: string
 ): Promise<void> {
-  await connectDB()
+  const { error } = await (supabase as any)
+    .from("api_keys")
+    .update({ enabled: false })
+    .eq("id", keyId)
+    .eq("user_id", userId)
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await (ApiKey as any).findOneAndUpdate(
-    { _id: keyId, userId },
-    { enabled: false }
-  )
+  if (error) {
+    console.error("Failed to revoke API key:", error)
+    throw new Error(`Failed to revoke API key: ${error.message}`)
+  }
 }
-

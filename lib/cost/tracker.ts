@@ -1,45 +1,4 @@
-import mongoose, { Schema } from "mongoose"
-import { connectDB } from "@/lib/db/mongoose"
-
-export interface ICost extends Omit<mongoose.Document, "model"> {
-  userId: string
-  organizationId?: string
-  provider: string // e.g., "openai", "anthropic"
-  model: string // e.g., "gpt-4", "claude-3"
-  inputTokens: number
-  outputTokens: number
-  totalTokens: number
-  cost: number // Cost in cents
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  metadata?: Record<string, any>
-  timestamp: Date
-  createdAt: Date
-}
-
-const CostSchema = new Schema<ICost>(
-  {
-    userId: { type: String, required: true, index: true },
-    organizationId: { type: String, index: true },
-    provider: { type: String, required: true, index: true },
-    model: { type: String, required: true, index: true },
-    inputTokens: { type: Number, default: 0 },
-    outputTokens: { type: Number, default: 0 },
-    totalTokens: { type: Number, required: true },
-    cost: { type: Number, required: true }, // Cost in cents
-    metadata: { type: Schema.Types.Mixed },
-    timestamp: { type: Date, default: Date.now, index: true },
-  },
-  { timestamps: true }
-)
-
-// Indexes
-CostSchema.index({ userId: 1, timestamp: -1 })
-CostSchema.index({ organizationId: 1, timestamp: -1 })
-CostSchema.index({ provider: 1, model: 1, timestamp: -1 })
-
-export const Cost =
-  mongoose.models.Cost ||
-  mongoose.model<ICost>("Cost", CostSchema)
+import { getUsageStats, trackUsage } from "@/lib/usage/tracker"
 
 // Pricing per 1M tokens (in cents)
 const PRICING: Record<string, Record<string, { input: number; output: number }>> = {
@@ -72,20 +31,16 @@ export function calculateCost(
 }
 
 // Track cost
-export async function trackCost(
-  data: {
-    userId: string
-    organizationId?: string
-    provider: string
-    model: string
-    inputTokens: number
-    outputTokens: number
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    metadata?: Record<string, any>
-  }
-): Promise<ICost> {
-  await connectDB()
-
+export async function trackCost(data: {
+  userId: string
+  organizationId?: string
+  provider: string
+  model: string
+  inputTokens: number
+  outputTokens: number
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  metadata?: Record<string, any>
+}): Promise<void> {
   const totalTokens = data.inputTokens + data.outputTokens
   const cost = calculateCost(
     data.provider,
@@ -94,32 +49,32 @@ export async function trackCost(
     data.outputTokens
   )
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (Cost as any).create({
+  await trackUsage({
     userId: data.userId,
     organizationId: data.organizationId,
-    provider: data.provider,
-    model: data.model,
-    inputTokens: data.inputTokens,
-    outputTokens: data.outputTokens,
-    totalTokens,
+    type: "ai_request",
+    resource: `${data.provider}.${data.model}`,
+    quantity: totalTokens,
     cost,
-    metadata: data.metadata,
-    timestamp: new Date(),
+    metadata: {
+      ...data.metadata,
+      provider: data.provider,
+      model: data.model,
+      inputTokens: data.inputTokens,
+      outputTokens: data.outputTokens,
+    },
   })
 }
 
 // Get cost summary
-export async function getCostSummary(
-  filters: {
-    userId?: string
-    organizationId?: string
-    provider?: string
-    model?: string
-    startDate?: Date
-    endDate?: Date
-  }
-): Promise<{
+export async function getCostSummary(filters: {
+  userId?: string
+  organizationId?: string
+  provider?: string
+  model?: string
+  startDate?: Date
+  endDate?: Date
+}): Promise<{
   totalCost: number // In cents
   totalTokens: number
   breakdown: Array<{
@@ -129,57 +84,41 @@ export async function getCostSummary(
     tokens: number
   }>
 }> {
-  await connectDB()
+  const resource =
+    filters.provider && filters.model
+      ? `${filters.provider}.${filters.model}`
+      : undefined
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const query: any = {}
+  const stats = await getUsageStats({
+    userId: filters.userId,
+    organizationId: filters.organizationId,
+    type: "ai_request",
+    resource,
+    startDate: filters.startDate,
+    endDate: filters.endDate,
+  })
 
-  if (filters.userId) query.userId = filters.userId
-  if (filters.organizationId) query.organizationId = filters.organizationId
-  if (filters.provider) query.provider = filters.provider
-  if (filters.model) query.model = filters.model
-
-  if (filters.startDate || filters.endDate) {
-    query.timestamp = {}
-    if (filters.startDate) query.timestamp.$gte = filters.startDate
-    if (filters.endDate) query.timestamp.$lte = filters.endDate
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const costs = await (Cost as any).find(query)
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const totalCost = costs.reduce((sum: number, c: any) => sum + c.cost, 0)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const totalTokens = costs.reduce((sum: number, c: any) => sum + c.totalTokens, 0)
-
-  // Breakdown by provider and model
-  const breakdownMap = new Map<
-    string,
-    { provider: string; model: string; cost: number; tokens: number }
-  >()
-
-  for (const cost of costs) {
-    const key = `${cost.provider}:${cost.model}`
-    const existing = breakdownMap.get(key) || {
-      provider: cost.provider,
-      model: cost.model,
-      cost: 0,
-      tokens: 0,
+  // Parse breakdown from resource names
+  const breakdown = stats.breakdown.map((item) => {
+    const [provider, model] = item.resource.split(".")
+    return {
+      provider: provider || "unknown",
+      model: model || "unknown",
+      cost: item.cost,
+      tokens: item.quantity,
     }
-    breakdownMap.set(key, {
-      ...existing,
-      cost: existing.cost + cost.cost,
-      tokens: existing.tokens + cost.totalTokens,
-    })
-  }
+  })
 
-  const breakdown = Array.from(breakdownMap.values())
+  // Filter breakdown if provider/model filters were applied but not exact match
+  const filteredBreakdown = breakdown.filter((item) => {
+    if (filters.provider && item.provider !== filters.provider) return false
+    if (filters.model && item.model !== filters.model) return false
+    return true
+  })
 
   return {
-    totalCost,
-    totalTokens,
-    breakdown,
+    totalCost: stats.totalCost,
+    totalTokens: stats.totalQuantity,
+    breakdown: filteredBreakdown,
   }
 }
-
