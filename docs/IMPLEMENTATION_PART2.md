@@ -193,7 +193,7 @@ The Left Brain is **Code-Synapse CLI** — not an HTTP server. The processing fl
 | 2.4 Upload Zone | `components/projects/upload-zone.tsx` | Drag-drop, video/document types |
 | 2.5 Project Creation Page | `app/(dashboard)/projects/new/page.tsx` | Multi-step form, create → upload → process → redirect |
 | 2.6 Project CRUD API | `app/api/projects/route.ts` | GET list, POST create |
-| 2.7 Project Detail API | `app/api/projects/[id]/route.ts` | GET/PATCH, ownership check |
+| 2.7 Project Detail API | `app/api/projects/[id]/route.ts` | GET/PATCH/DELETE, ownership check |
 | 2.8 Upload API | `app/api/projects/[id]/upload/route.ts` | Presigned URL, `project_assets` insert |
 | 2.9 Process Trigger API | `app/api/projects/[id]/process/route.ts` | Queue `queueProjectProcessing` |
 | 2.10 Slices API | `app/api/projects/[id]/slices/route.ts` | GET slices by project |
@@ -202,11 +202,32 @@ The Left Brain is **Code-Synapse CLI** — not an HTTP server. The processing fl
 | 2.12 Events API | `app/api/projects/[id]/events/route.ts` | POST callback, GET with `?after=` |
 | 2.13 MCP Proxy | `app/api/mcp/left-brain/route.ts`, `right-brain/route.ts` | Forward to LEFT/RIGHT_BRAIN_MCP_URL |
 | Project Detail Page | `app/(dashboard)/projects/[id]/page.tsx` | Status, confidence, slices list, View Plan when ready |
+| Project Detail Actions | `components/projects/project-detail-actions.tsx` | Stop processing (when processing/building), Delete project (with confirmation) |
 | Worker | `lib/queue/workers.ts` | `processProjectJob`: Daytona/local Code-Synapse, Right Brain, Gemini planner, slice insert |
 | Code-Synapse runner | `lib/workspaces/code-synapse-runner.ts` | Daytona or local checkout + CLI |
 | Daytona runner | `lib/daytona/runner.ts` | Create sandbox, clone, exec, preview link |
 | MCP client | `lib/mcp/code-synapse-client.ts` | getFeatureMap, getSliceDependencies, getMigrationContext |
 | Gemini planner | `lib/ai/gemini-planner.ts` | generateSlices(project) |
+| Supabase migration | `supabase/migrations/20260208010000_create_projects_tables.sql` | projects, project_assets, vertical_slices, agent_events |
+| API logging | All project API routes | `logger` from `@/lib/utils/logger`; request/response flow, no sensitive data |
+
+---
+
+### 2.0.3 Phase 2 Post-Completion Enhancements
+
+**Project creation wizard:**
+- GitHub URL and file uploads (videos, documents) are **optional individually**; at least one source required before submit
+- Target framework: Next.js selectable; React, Vue, Angular, Svelte, Other show "Coming soon"
+- Upgraded UI: stepper, glass card, framer-motion transitions, Shadcn Select for framework
+
+**Project detail page:**
+- **Stop processing:** Button visible when status is `processing` or `building`; PATCHes status to `pending`
+- **Delete project:** Dropdown menu (⋯) with confirmation AlertDialog; DELETE `/api/projects/[id]` (cascades to assets, slices, events)
+
+**Operational:**
+- **Redis unavailability:** Process API returns 503 with clear message when Redis is down; project status reverted to `pending`; wizard toast shows Redis startup hint
+- **Structured logging:** All project APIs log request start, auth, validation, DB operations, success/errors (no tokens, passwords, full bodies)
+- **Supabase migration:** Run `pnpm migrate` to create projects tables; create `project-videos` and `project-documents` storage buckets in Supabase Dashboard
 
 ---
 
@@ -226,16 +247,17 @@ End-to-end journey from project creation to analysis complete:
 │  2. NEW PROJECT (/projects/new) — Multi-step form                                │
 │     ┌─────────────────────────────────────────────────────────────────────────┐  │
 │     │ Step 0: Project Basics                                                   │  │
-│     │   Name (required), description, target framework (Next.js/React/Vue)     │  │
+│     │   Name (required), description, target framework (Next.js only; others   │  │
+│     │   "Coming soon")                                                        │  │
 │     │   → Next                                                                │  │
 │     ├─────────────────────────────────────────────────────────────────────────┤  │
-│     │ Step 1: Source Code                                                      │  │
-│     │   GitHub URL input (validated)                                           │  │
+│     │ Step 1: Source Code (optional)                                           │  │
+│     │   GitHub URL input (validated if provided)                               │  │
 │     │   → Next                                                                │  │
 │     ├─────────────────────────────────────────────────────────────────────────┤  │
-│     │ Step 2: Knowledge Assets                                                 │  │
-│     │   Video upload zone (.mp4, .mov, etc.)                                   │  │
-│     │   Document upload zone (.pdf, .md, .txt)                                 │  │
+│     │ Step 2: Knowledge Assets (optional)                                      │  │
+│     │   Video upload zone (.mp4, .mov, etc.), Document upload (.pdf, .md, .txt)│  │
+│     │   At least one source required: GitHub URL OR files                      │  │
 │     │   → Next                                                                │  │
 │     ├─────────────────────────────────────────────────────────────────────────┤  │
 │     │ Step 3: Review & Launch                                                  │  │
@@ -251,6 +273,7 @@ End-to-end journey from project creation to analysis complete:
 │                                                                                  │
 │  4. PROJECT DETAIL (/projects/[id])                                              │
 │     User lands on project page; status shows "processing"                        │
+│     Stop processing button (when processing/building); Delete via ⋯ menu         │
 │     Neural Activity Pulse (electric-cyan dot) in sidebar header — active         │
 │                                                                                  │
 │  5. BACKGROUND PROCESSING (Worker)                                               │
@@ -499,113 +522,315 @@ The worker (Phase 5) handles the actual Left Brain/Right Brain processing. **Lef
 ---
 
 <a id="phase-3"></a>
-## PHASE 3: Vertical Slice Architecture & Plan View
+## PHASE 3: Vertical Slice Architecture & Plan Command Center
 
-### 3.1 Slice Status Badge
+### 3.0 Phase 3 Architecture & Implementation Status
 
-**File: `components/slices/slice-status-badge.tsx`** (NEW)
+**Status: ✅ COMPLETE** — Upgraded from basic 5-file plan view to a full interactive command center.
 
-**Task:** Colored badge component for slice statuses.
+**Architecture:**
 
-**Status-to-style mapping:**
+```
+page.tsx (Server) → fetches project + slices
+  └── PlanCommandCenter (Client orchestrator)
+        ├── PlanStatsBar          — animated metrics strip with progress bar
+        ├── PlanToolbar           — search, status filters, view toggle, sidebar toggle, "Build Next"
+        ├── flex row:
+        │   ├── PlanSidebar       — scrollable filtered slice list (280px, collapsible)
+        │   └── Main viewport     — SliceGraph (graph view) or SliceList (list view)
+        └── SliceDetailSheet      — right Sheet with tabs: Overview | Contracts | Dependencies
+```
 
-| Status | Label | Style |
-|--------|-------|-------|
-| pending | Pending | slate-grey bg, muted text |
-| selected | Selected | rail-purple/20 bg, quantum-violet text |
-| building | Building | electric-cyan/15 bg, electric-cyan text, `animate-pulse-glow` |
-| testing | Testing | warning/15 bg, warning text |
-| self_healing | Self-Healing | rail-purple/15 bg, rail-purple text |
-| complete | Complete | success/15 bg, success text |
-| failed | Failed | error/15 bg, error text |
+**Implementation Summary:**
 
----
-
-### 3.2 Slice Card
-
-**File: `components/slices/slice-card.tsx`** (NEW)
-
-**Task:** Clickable card showing slice name, status badge, description, priority, confidence, and retry count.
-
-**Key details:**
-- `<button>` with `onClick` handler for slice selection
-- `hover:glow-purple` transition effect
-- Use `SliceStatusBadge` for status
-- Show priority number, confidence percentage (when > 0), retry count (when > 0)
-
----
-
-### 3.3 Slice List
-
-**File: `components/slices/slice-list.tsx`** (NEW)
-
-**Task:** Vertical list of SliceCards with empty state.
-
-**Key details:**
-- Accept `slices` array and optional `onSelect` callback
-- Empty state: dashed border, "No slices generated yet"
-- Render cards in a `space-y-3` stack
+| Item | File | Notes |
+|------|------|-------|
+| Shared types | `components/slices/plan-types.ts` | PlanView, PlanFilters, PlanState, PlanAction |
+| Pure utilities | `components/slices/plan-utils.ts` | Filtering, buildable check, dependency chain, topological layout, status counts |
+| State hook | `components/slices/use-plan-state.ts` | `useReducer`-based state; localStorage view persistence |
+| Confidence ring | `components/slices/confidence-ring.tsx` | SVG radial progress ring with animated fill, color-tiered glow |
+| Status badge | `components/slices/slice-status-badge.tsx` | Per-status icons, size prop (sm/md), colored border |
+| Slice card | `components/slices/slice-card.tsx` | Glass card, confidence ring, dep count, BC/CC badges, search highlighting, selected glow |
+| Stats bar | `components/slices/plan-stats-bar.tsx` | 5 animated metric cells, gradient progress bar, project header |
+| Toolbar | `components/slices/plan-toolbar.tsx` | Search (debounced 200ms), status filter dropdown, view toggle, sidebar toggle, "Build Next" CTA |
+| Sidebar | `components/slices/plan-sidebar.tsx` | 280px collapsible panel, ScrollArea, AnimatePresence stagger |
+| Command center | `components/slices/plan-command-center.tsx` | Top-level client orchestrator composing all panels |
+| Dependency graph | `components/slices/slice-graph.tsx` | Rich nodes, topological layout, MiniMap, dependency chain highlighting, arrow markers |
+| Slice list | `components/slices/slice-list.tsx` | AnimatePresence stagger, selectedId + search props |
+| Detail sheet | `components/slices/slice-detail-sheet.tsx` | Right Sheet, 3 tabs, JSON syntax coloring, build action, dep navigation |
+| Plan page | `app/(dashboard)/projects/[id]/plan/page.tsx` | Thin server shell → `<PlanCommandCenter>` |
 
 ---
 
-### 3.4 Slice Dependency Graph
+### 3.1 Foundation — Types, Utils, State Hook
 
-**File: `components/slices/slice-graph.tsx`** (NEW)
+**File: `components/slices/plan-types.ts`** (NEW)
 
-**Task:** Interactive dependency graph using `@xyflow/react` (React Flow).
+**Task:** Shared types for the plan command center.
 
-**Key decisions:**
-- `"use client"` — React Flow requires client-side rendering
-- Accept `slices` array, `onNodeClick` callback, `minimap` boolean (compact mode for Glass Brain)
-- Generate nodes and edges from slices array using `useMemo`
+- `Slice` and `Project` re-exported from `Database["public"]["Tables"]` row types
+- `PlanView`: `"graph" | "list"`
+- `PlanFilters`: `{ search: string; statuses: SliceStatus[] }`
+- `PlanState`: view, filters, selectedSliceId, focusedSliceId, detailOpen
+- `PlanAction`: discriminated union for all reducer actions
 
-**Node positioning:** Grid layout — `x = (index % 4) * 250`, `y = floor(index / 4) * 150`
+**File: `components/slices/plan-utils.ts`** (NEW)
 
-**Node styling by status:**
+**Task:** Pure utility functions for plan logic.
 
-| Status | Border color | Box shadow | Notes |
-|--------|-------------|-----------|-------|
-| pending | `rgba(250,250,250,0.1)` | none | |
-| selected | `#6E18B3` (rail-purple) | purple glow | |
-| building | `#00E5FF` (electric-cyan) | cyan glow | |
-| testing | `#FFB800` (warning) | yellow glow | |
-| self_healing | `#6E18B3` | purple glow | |
-| complete | `#00FF88` (success) | green glow | |
-| failed | `#FF3366` (error) | red glow | |
+| Function | Description |
+|----------|-------------|
+| `getFilteredSlices(slices, filters)` | Filters by name/description search + status array |
+| `isBuildable(slice, allSlices)` | Returns true if slice is pending/selected and all deps are complete |
+| `getNextBuildable(slices)` | First buildable slice by priority (lowest number first) |
+| `getStatusCounts(slices)` | Returns `Record<SliceStatus, number>` |
+| `getDependencyChain(sliceId, slices)` | Returns `Set<string>` with all transitive upstream + downstream IDs |
+| `computeGraphLayout(slices)` | Topological layered layout using Kahn's algorithm; returns `Map<string, {x, y}>` |
 
-All nodes: `#1E1E28` background, `#FAFAFA` text, 12px border-radius, `font-grotesk`
+**Topological layout algorithm:**
+1. Build adjacency map from `slice.dependencies[]`
+2. Kahn's algorithm for topological sort
+3. Assign layer = longest path from root nodes
+4. Within each layer, sort by priority
+5. `x = layer * 300`, `y = posInLayer * 160 - (layerHeight / 2)` (centered)
+6. Handle cycles: treat as same layer
 
-**Edges:**
-- Style: `rgba(250,250,250,0.15)` stroke, 1.5px width
-- When source slice is `building`: set edge `animated: true` (dashed flow animation)
-- Direction: dependency → dependent
+**File: `components/slices/use-plan-state.ts`** (NEW)
 
-**Enhancement — Synapse Edge Animations:**
-Replace static edges with animated "synapse pulse" edges. When a slice transitions to `building`, animate a particle/pulse traveling along the dependency edges from completed parent nodes toward the building node. Use a custom React Flow edge component with a `framer-motion` animated circle that travels along the edge path. This makes the dependency graph feel like a living neural network.
+**Task:** `useReducer`-based state management hook.
 
-**Enhancement — Node Status Transitions:**
-When a node changes status (e.g., pending → building), apply a brief flash/bloom animation on the node. Use `framer-motion`'s `animate` with a scale pulse (1 → 1.1 → 1) and border glow intensification lasting ~300ms.
-
-**Graph settings:**
-- Background: `#0A0A0F` (void-black)
-- Background dots: `rgba(250,250,250,0.03)` at 24px gap
-- Minimap mode: smaller font (10px), smaller min-width (100px), no Controls panel
-- Full mode: Controls panel visible, zoom range 0.5-2x
+- Actions: `SET_VIEW`, `SET_FILTERS`, `SELECT_SLICE`, `CLEAR_SELECTION`, `OPEN_DETAIL`, `CLOSE_DETAIL`, `SET_FOCUSED_SLICE`
+- Selecting a slice auto-opens the detail sheet
+- Changing view clears focused slice
+- View preference persisted to `localStorage` under `lazarus-plan-view`
 
 ---
 
-### 3.5 Plan Page
+### 3.2 Confidence Ring
 
-**File: `app/(dashboard)/projects/[id]/plan/page.tsx`** (NEW)
+**File: `components/slices/confidence-ring.tsx`** (NEW)
 
-**Task:** Full-viewport migration plan page with interactive dependency graph.
+**Task:** SVG radial progress ring component with animated fill and color tiers.
 
-**Layout:**
-1. **Header bar:** Project name + status + confidence percentage + "X/Y slices complete" counter
-2. **Main area:** Full-height `SliceGraph` component
-3. (Future: bottom panel for selected slices queue, right sidebar for slice detail)
+- Props: `value` (0-100), `size` (24/32/48/64/80), `strokeWidth`, `showLabel`, `animated`
+- Two `<circle>` elements: background track + foreground arc via `stroke-dasharray`/`stroke-dashoffset`
+- CSS transition animates dashoffset from full → target on mount (0.8s ease-out)
+- Color tiers: 0-39 error (#FF3366), 40-69 warning (#FFB800), 70-84 cyan (#00E5FF), 85-100 success (#00FF88)
+- SVG glow filter matching color tier
+- Respects `prefers-reduced-motion`
 
-**Data fetching:** Server component — query `projects` and `vertical_slices` tables from Supabase.
+---
+
+### 3.3 Slice Status Badge (Enhanced)
+
+**File: `components/slices/slice-status-badge.tsx`** (MODIFY)
+
+**Task:** Upgrade with per-status icons, size prop, and colored border.
+
+**Status-to-icon mapping:**
+
+| Status | Icon | Animation | Border |
+|--------|------|-----------|--------|
+| pending | `Clock` | — | muted/20 |
+| selected | `Target` | — | quantum-violet/20 |
+| building | `Loader2` | `animate-spin` | electric-cyan/20 |
+| testing | `FlaskConical` | — | warning/20 |
+| self_healing | `Heart` | `animate-pulse` | rail-purple/20 |
+| complete | `CheckCircle2` | — | success/20 |
+| failed | `XCircle` | — | error/20 |
+
+- `size` prop: `"sm"` (default, compact) | `"md"` (with larger icon, for detail panel)
+
+---
+
+### 3.4 Slice Card (Enhanced)
+
+**File: `components/slices/slice-card.tsx`** (MODIFY)
+
+**Task:** Upgrade with glass styling, confidence ring, dependency indicators, and interactivity.
+
+**Changes from original:**
+- `glass-card` background with `hover:glow-purple` transition
+- Layout: priority badge top-right, name + status badge left, description, bottom row = `[ConfidenceRing 24px] [dep count + GitBranch icon] [BC/CC badges] [retry count]`
+- `selected` prop → `border-electric-cyan glow-cyan` when true
+- `search` prop → highlight matching substring in name with `<mark>` (electric-cyan bg)
+- `motion.button` wrapper with fade+slide entrance (`opacity: 0→1, y: 8→0`)
+- BC badge: `bg-quantum-violet/15 text-quantum-violet`; CC badge: `bg-electric-cyan/15 text-electric-cyan`
+
+---
+
+### 3.5 Stats Bar
+
+**File: `components/slices/plan-stats-bar.tsx`** (NEW)
+
+**Task:** Horizontal glass-panel strip with animated metrics and progress bar.
+
+**Layout:** Project name + status badge (left, border-right divider) | 5 metric cells (center) | completion % (right)
+
+**Metric cells:**
+
+| Metric | Icon | Color |
+|--------|------|-------|
+| Total | `Layers` | cloud-white |
+| Complete | `CheckCircle2` | success |
+| Building | `Activity` | electric-cyan |
+| Ready | `Zap` | quantum-violet |
+| Avg Confidence | `ConfidenceRing` (size=32) | tiered |
+
+- Counts animate from 0 → target on mount via requestAnimationFrame with cubic ease-out (600ms)
+- Bottom border: 1px gradient progress bar (`bg-automation-flow`) showing completion percentage
+
+---
+
+### 3.6 Toolbar
+
+**File: `components/slices/plan-toolbar.tsx`** (NEW)
+
+**Task:** Action bar with search, filters, view toggle, and build CTA.
+
+**Left side:**
+- Sidebar toggle button (`PanelLeftClose` / `PanelLeft` icons)
+- Search `Input` with `Search` icon, debounced 200ms
+- Status filter `DropdownMenu` with checkbox items per status + active filter count badge
+
+**Right side:**
+- "X of Y" count label
+- View toggle: two icon buttons (`Network` / `LayoutList`), active one gets `bg-rail-purple/20 text-quantum-violet`
+- "Build Next" `Button` (`bg-rail-fade text-white`, `Zap` icon, disabled when no buildable slices)
+
+---
+
+### 3.7 Sidebar
+
+**File: `components/slices/plan-sidebar.tsx`** (NEW)
+
+**Task:** Collapsible 280px panel with filtered slice cards.
+
+- `bg-obsidian/60 backdrop-blur-sm`, `border-r border-border`
+- `ScrollArea` containing filtered `SliceCard`s
+- `AnimatePresence` + `motion.div` with `staggerChildren: 0.04` for card entrance
+- Selected card highlighted via `selected` prop
+- Collapses to 0px when sidebar toggle is off (renders `null`)
+
+---
+
+### 3.8 Command Center Orchestrator
+
+**File: `components/slices/plan-command-center.tsx`** (NEW)
+
+**Task:** Top-level client component composing all plan panels.
+
+- Receives `project` + `initialSlices` from server page
+- Instantiates `usePlanState()` for view, filters, selection state
+- Computes filtered slices and buildable count via `useMemo`
+- Composes: `PlanStatsBar` → `PlanToolbar` → flex(`PlanSidebar` + viewport) + `SliceDetailSheet`
+- "Build Next" handler: find next buildable via `getNextBuildable()`, select it (opens detail)
+- `handleSliceUpdate` for optimistic build status updates
+- Wraps in `TooltipProvider` for disabled button tooltips
+
+---
+
+### 3.9 Dependency Graph (Enhanced)
+
+**File: `components/slices/slice-graph.tsx`** (MODIFY — major upgrade)
+
+**Task:** Transform from basic grid layout to a rich interactive dependency visualization.
+
+**Rich nodes (inline, keeps nodeTypes stable):**
+- Status icon (per status, spin for building)
+- Slice name (truncated, `font-grotesk`)
+- Confidence ring (24px, inline SVG)
+- Dependency count (`GitBranch` icon)
+- Left accent border matching status color
+- `glass-card`-style background with backdrop-blur
+
+**Topological layout:**
+- Uses `computeGraphLayout()` from `plan-utils.ts` instead of grid
+- Left-to-right flow: root nodes on left, dependents to the right
+- 300px horizontal gap, 160px vertical gap, centered within layers
+
+**Focus mode (dependency chain highlighting):**
+- `focusedSliceId` prop from hover events
+- Compute `getDependencyChain()` → nodes outside chain get `opacity: 0.2`, edges outside get `opacity: 0.08`
+- Chain nodes maintain full opacity + enhanced glow
+- 300ms CSS transition for smooth dim/highlight
+
+**Selected state:**
+- `selectedSliceId` prop → selected node gets `electric-cyan` border + cyan glow
+
+**New features:**
+- `MiniMap` from `@xyflow/react` with dark theme colors and status-colored node indicators
+- Arrow markers at edge target end (`MarkerType.ArrowClosed`)
+- `onNodeMouseEnter`/`Leave` callbacks for focus mode
+- Enhanced edges: animated synapse particle when source is building + dimming support
+
+---
+
+### 3.10 Slice List (Enhanced)
+
+**File: `components/slices/slice-list.tsx`** (MODIFY)
+
+**Task:** Upgrade with stagger animations and prop forwarding.
+
+- `AnimatePresence` with staggered `motion.div` wrappers (50ms delay per card)
+- `selectedId` + `search` props passed through to `SliceCard`
+- Slide-up entrance animation per card (`opacity: 0→1, y: 16→0`)
+- Padding added for standalone viewport use
+
+---
+
+### 3.11 Detail Sheet
+
+**File: `components/slices/slice-detail-sheet.tsx`** (NEW)
+
+**Task:** Right-side `Sheet` with detailed slice information and build action.
+
+**Width:** `sm:max-w-lg` override on `SheetContent`, `glass-panel` background
+
+**Header area:**
+- `ConfidenceRing` size=64 with animated fill
+- Slice name (`font-grotesk text-xl`) + `SliceStatusBadge` size="md" + priority badge
+- Full description (no truncation)
+
+**Tabs (`Tabs` component):**
+
+*Overview tab:*
+- Modernization flags as colored chips (`Flag` icon, `quantum-violet` styling)
+- Dependency summary counts (upstream + downstream)
+- Retry count with `RefreshCw` icon
+- Created/updated timestamps with `Calendar` icon
+
+*Contracts tab:*
+- Two sections: "Behavioral Contract" and "Code Contract"
+- JSON rendered in `<pre>` with syntax coloring: keys in `text-quantum-violet`, strings in `text-electric-cyan`, numbers in `text-success`, booleans in `text-warning`
+- Null state: "No contract generated" muted text
+
+*Dependencies tab:*
+- Upstream section: "This slice depends on:" → list of dep slices as clickable mini-cards with status badges
+- Downstream section: "These slices depend on this:" → clickable mini-cards
+- Visual connecting lines via `border-l-2 border-border pl-3` indentation
+- Clicking a dependency navigates to that slice (calls `onSliceSelect`)
+
+**Footer:**
+- Status message: "All N dependencies complete" (green) or "Waiting on N dependencies" (muted)
+- "Build This Slice" button (`bg-rail-fade text-white`, `Zap` icon, full width)
+- Disabled with tooltip when not buildable (deps not complete, already building, already complete)
+- Calls `POST /api/projects/${projectId}/slices/${sliceId}/build`
+- Optimistic status update → "building"; revert on error with `toast.error()`
+
+---
+
+### 3.12 Plan Page (Rewritten)
+
+**File: `app/(dashboard)/projects/[id]/plan/page.tsx`** (MODIFY)
+
+**Task:** Thin server shell delegating to `PlanCommandCenter`.
+
+**Key changes from original:**
+- Removed inline header bar, stats computation, and direct `SliceGraph` render
+- Server component still handles auth, project + slices fetching (same Supabase queries)
+- Single render: `<PlanCommandCenter project={project} initialSlices={slices ?? []} />`
+- Full viewport height: `h-[calc(100vh-3rem)]`
 
 ---
 
@@ -877,7 +1102,243 @@ Wrap the entire Glass Brain container in a **Magic UI** `BorderBeam` component t
 
 ---
 
-### 4.8 Additional Glass Brain Enhancements
+### 4.8 Phase 4 Upgrade: Demo-Worthy Enhancements
+
+**Status: ✅ COMPLETE** — Transformed Glass Brain from "functional real-time monitor" → "demo-worthy showpiece."
+
+**Architecture:**
+
+```
+GlassBrainDashboard (orchestrator)
+  ├── BootSequence (enhanced: +600ms, "Materializing panes..." phase)
+  ├── BreathingGlow (wrapper: dynamic boxShadow scales with confidence)
+  ├── HeaderStats (replaces old header bar)
+  │     ├── AgentStatusPulse (8px dot, color from latest event type)
+  │     ├── AnimatedCounters × 4 (LOC, Tests, Tools, Self-Heals)
+  │     ├── Project/Slice name + SliceStatusBadge
+  │     ├── ElapsedTimer (lifted, ref shared with VictoryLap)
+  │     └── Mute toggle
+  ├── PaneConnectionLines (CSS shimmer lines at pane boundaries)
+  ├── PlanPaneEnhanced (replaces PlanPane)
+  │     ├── MiniProgressBar (stacked colored segments by status)
+  │     ├── ActiveSliceSpotlight (cyan-bordered card, ConfidenceRing 32px, current step)
+  │     ├── SliceMiniCards (compact list, ConfidenceRing 24px, sorted by priority)
+  │     └── View toggle (List ↔ Graph)
+  ├── WorkPaneEnhanced (replaces WorkPane)
+  │     ├── SliceContextHeaders (colored dividers when slice_id changes)
+  │     ├── TestResultCards (green/red compact cards for test_result events)
+  │     ├── CodeBlockLabels (filename/language header above <pre>)
+  │     ├── RelativeTimestamps (every 5th event or >30s gap)
+  │     └── All existing: GhostTyper, highlightCode, glitch, auto-scroll, FAB
+  ├── ActivityTimeline (horizontal event density strip, h-8)
+  │     ├── Event ticks (color-coded, larger for test_result/self_heal)
+  │     ├── Slice background bands (10% opacity)
+  │     └── Hover tooltip (event type + content preview + timestamp)
+  ├── ConfidenceGauge (enhanced)
+  │     ├── ConfidenceSparkline (SVG polyline, gradient fill, glowing dot)
+  │     ├── Milestone markers at 25%, 50%, 75%
+  │     └── Score tooltip (weighted breakdown: Code Quality, Test Coverage, etc.)
+  └── VictoryLap (conditional overlay, z-50)
+        ├── Animated score (text-7xl, spring scale 0→1)
+        ├── "TRANSMUTATION COMPLETE" title
+        ├── Stats grid 2×2 (LOC, Tests, Self-Heals, Time) with animated counters
+        ├── 40 particle burst (scatter from center, fade out)
+        ├── "View Plan" CTA → /projects/[id]/plan
+        └── Auto-dismiss 8s or click X
+```
+
+---
+
+#### 4.8.1 `derive-stats.ts` — Foundation Utility
+
+**File: `components/ai/glass-brain/derive-stats.ts`** (NEW — ~180 lines)
+
+**Task:** Pure utility module (no React, no `"use client"`). Every new component imports from here.
+
+**Exports:**
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `deriveStats(events, confidence)` | `DerivedStats` | All computed stats: LOC, tests, tools, self-heals, activity, history, events by slice |
+| `getAgentStatusLabel(events)` | `string` | Human-readable status from latest event: "Writing code...", "Running tests...", "Self-healing..." |
+| `getConfidenceHistory(events, initial?)` | `ConfidencePoint[]` | Walks events accumulating `confidence_delta` into `{timestamp, value}` points |
+| `getConfidenceBreakdown(score)` | `ConfidenceBreakdown` | Deterministic weighted split: codeQuality (30%), testCoverage (35%), selfHealSuccess (15%), overallProgress (20%) |
+| `countLinesOfCode(events)` | `number` | Sum of newlines in all `code_write` event content |
+| `getTestSummary(events)` | `TestSummary` | Count `test_result` events, inspect `metadata.passed`/`metadata.result` |
+| `getEventTypeColor(eventType)` | `string` | Hex color for each `AgentEventType` |
+| `timeAgo(dateStr)` | `string` | "5s ago", "3m ago" — extracted from `thoughts-pane.tsx` for reuse |
+
+---
+
+#### 4.8.2 `styles/tailwind.css` — New Animations
+
+**File: `styles/tailwind.css`** (MODIFY)
+
+**Added to `@theme`:**
+- `--animate-breathing-glow: breathing-glow 4s ease-in-out infinite` — `@keyframes breathing-glow` cycles `box-shadow: inset 0 0 20px rgba(0,229,255,0.03)` ↔ `inset 0 0 40px rgba(0,229,255,0.08)`
+
+**Added to `@layer utilities`:**
+- `.glow-success` — `box-shadow: 0 0 30px rgba(0,255,136,0.2)`
+- `.glow-success-strong` — `box-shadow: 0 0 60px rgba(0,255,136,0.3)`
+
+---
+
+#### 4.8.3 `header-stats.tsx` — Rich Header Bar
+
+**File: `components/ai/glass-brain/header-stats.tsx`** (NEW — ~190 lines)
+
+**Props:** `events, confidence, projectName, activeSlice, muted, toggleMute, elapsedRef`
+
+**Layout:** `[AgentStatusPulse + statusText] [LiveCounters ×4] [project/slice + Timer + Mute]`
+
+- **AgentStatusPulse:** 8px pulsing dot (color from `getEventTypeColor()` of latest event) + `AnimatePresence` status text fade
+- **LiveCounters:** 4 compact stat cells with rAF-animated numbers (same pattern as `plan-stats-bar.tsx`): Lines of Code (`Code`), Tests pass/fail (`FlaskConical`), Tools Used (`Wrench`), Self-Heals (`RotateCw` — only shown when > 0)
+- **ElapsedTimer:** Moved from dashboard into this component; writes to shared `elapsedRef` for VictoryLap
+
+---
+
+#### 4.8.4 `confidence-sparkline.tsx` + `confidence-gauge.tsx` Modifications
+
+**File: `components/ai/glass-brain/confidence-sparkline.tsx`** (NEW — ~100 lines)
+
+- Pure SVG `<polyline>` plotting confidence trajectory from `ConfidencePoint[]`
+- `<linearGradient>` fill below line (electric-cyan at 15% → transparent)
+- Current-value dot (`r=3`) with glow filter at rightmost point
+- Width 200px, height 24px (configurable via props)
+- Only renders if history has ≥ 2 points
+
+**File: `components/ai/glass-brain/confidence-gauge.tsx`** (MODIFY)
+
+- New prop: `history?: ConfidencePoint[]`
+- Sparkline inserted between label and bar (120px × 20px when history available)
+- Milestone tick marks at 25%, 50%, 75% (thin `w-px bg-cloud-white/20` dividers)
+- Score number wrapped in `<TooltipProvider>` → `<Tooltip>` → `<TooltipContent>` showing weighted breakdown from `getConfidenceBreakdown()`
+- Layout: `[Label] [Sparkline?] [===Bar===] [Score+Tooltip]`
+
+---
+
+#### 4.8.5 `plan-pane-enhanced.tsx` — Enhanced Plan Pane
+
+**File: `components/ai/glass-brain/plan-pane-enhanced.tsx`** (NEW — ~220 lines)
+
+**Props:** `slices, activeSliceId, events`
+
+Replaces `PlanPane` in the orchestrator.
+
+**Sub-components:**
+
+1. **MiniProgressBar** — horizontal stacked `motion.div` bar showing status distribution, animated width. Labels below: "X pending / Y building / Z complete"
+2. **ActiveSliceSpotlight** — currently-building slice as a larger card with pulsing cyan border (`box-shadow: 0 0 12px rgba(0,229,255,0.15)`), `ConfidenceRing` (32px), name, status badge, current step from `getAgentStatusLabel(sliceEvents)`
+3. **SliceMiniCard** — compact row: status color dot (2px), name (truncated), `ConfidenceRing` (24px, no label). Sorted by priority.
+4. **View toggle** — `List` / `GitBranch` icon pair. Default: list. Graph renders `SliceGraph`.
+
+**Layout:**
+```
+[Header: "The Plan" | X/Y | ViewToggle]
+[MiniProgressBar]
+---
+{list: ActiveSliceSpotlight + ScrollArea of SliceMiniCards}
+{graph: SliceGraph}
+```
+
+---
+
+#### 4.8.6 `work-pane-enhanced.tsx` — Enhanced Work Pane
+
+**File: `components/ai/glass-brain/work-pane-enhanced.tsx`** (NEW — ~340 lines)
+
+**Props:** `events, slices`
+
+Ports ALL existing `work-pane.tsx` code (GhostTyper, highlightCode, glitch effect, auto-scroll, FAB) and adds:
+
+1. **Slice context headers** — when `slice_id` changes between events, inserts a colored divider: `bg-electric-cyan/5` with dot + slice name + status. Built from `slices` prop → `sliceMap`.
+2. **Event group styling** — observations get `border-l-2 border-electric-cyan/15` connecting border (extends existing `ml-6`)
+3. **Relative timestamps** — shown every 5th event or when >30s elapsed. `text-[9px] text-muted-foreground/40` right-aligned. Reuses `timeAgo()` from `derive-stats.ts`.
+4. **Code block labels** — if `event.metadata` has `filename` or `language`, shows header above `<pre>`: `FileCode` icon + filename.
+5. **Test result summary cards** — special rendering for `test_result`: compact card with green/red background tint, pass/fail icon, failure file if in metadata. `mx-3 my-1.5 rounded-md border px-3 py-2`.
+
+---
+
+#### 4.8.7 `activity-timeline.tsx` — Event Density Strip
+
+**File: `components/ai/glass-brain/activity-timeline.tsx`** (NEW — ~160 lines)
+
+**Props:** `events, slices`
+
+**Container:** `h-8 glass-panel rounded-lg border border-border cursor-crosshair`
+
+- Each event → thin vertical tick mark positioned by normalized timestamp. Color from `getEventTypeColor()`.
+- Larger (4px wide, 0.9 opacity) dots for `test_result` and `self_heal`; 1px/0.5 opacity for others.
+- Background color bands showing which slice was being worked on (6% opacity, hash-based color per slice ID).
+- Hover: `onMouseMove` finds closest event within 5% threshold, shows custom tooltip with event type + content preview (80 chars) + timestamp. Tooltip positioned at mouse X.
+- Empty state: "No events yet" centered text.
+
+---
+
+#### 4.8.8 `victory-lap.tsx` — Ship Ready Celebration
+
+**File: `components/ai/glass-brain/victory-lap.tsx`** (NEW — ~170 lines)
+
+**Props:** `score, stats (linesOfCode, testsPassed, testsTotal, selfHeals, elapsedSeconds), projectId, onDismiss`
+
+**Trigger:** In orchestrator, when `confidence >= 0.85` for the first time (tracked via `useRef<boolean>(false)`).
+
+**Rendering:**
+- Backdrop: `fixed inset-0 z-50 bg-void-black/80 backdrop-blur-sm`
+- Large animated score: `text-7xl font-bold text-success` with spring scale `0→1`, green text-shadow glow
+- "TRANSMUTATION COMPLETE" in `font-grotesk uppercase tracking-[0.3em] text-electric-cyan`
+- Stats grid (2×2): Lines of Code, Tests Passed, Self-Heals, Time Elapsed — animated counters (rAF, 1200ms cubic ease-out)
+- "View Plan" CTA → `/projects/[id]/plan` with `glow-success-strong` styling
+- 40 particle `motion.div` elements bursting from center (scatter to random positions over 2s, 4 colors, fade out)
+- Auto-dismiss after 8s, or click X to close (exit animation 300ms)
+- Respects `prefers-reduced-motion` (no particles, instant display)
+
+---
+
+#### 4.8.9 `ambient-effects.tsx` — Visual Polish
+
+**File: `components/ai/glass-brain/ambient-effects.tsx`** (NEW — ~60 lines)
+
+**PaneConnectionLines:** Two absolute-positioned `w-px` dividers at ~25% and ~75% of pane grid, `animate-shimmer bg-gradient-to-b from-transparent via-electric-cyan/20 to-transparent opacity-20`, `pointer-events-none`.
+
+**BreathingGlow:** `motion.div` wrapper with dynamic `boxShadow` that scales with confidence (`intensity = 20 + confidence * 40`, `alpha = 0.05 + confidence * 0.1`). Animates between 50% and 100% intensity over 4s `easeInOut` infinite cycle.
+
+---
+
+#### 4.8.10 `glass-brain-dashboard.tsx` — Wire Everything
+
+**File: `components/ai/glass-brain/glass-brain-dashboard.tsx`** (MODIFY — ~100 lines of changes)
+
+**Changes from base Phase 4:**
+
+1. Import all new components (`HeaderStats`, `PlanPaneEnhanced`, `WorkPaneEnhanced`, `ActivityTimeline`, `VictoryLap`, `PaneConnectionLines`, `BreathingGlow`, `deriveStats`, `getConfidenceHistory`)
+2. Compute `stats` and `confidenceHistory` via `useMemo` using `deriveStats()` and `getConfidenceHistory()`
+3. Replace header bar → `<HeaderStats>` with shared `elapsedRef`
+4. Replace `<PlanPane>` → `<PlanPaneEnhanced>` (pass `events`)
+5. Replace `<WorkPane>` → `<WorkPaneEnhanced>` (pass `slices`)
+6. Add `<ActivityTimeline>` between panes and gauge
+7. Pass `history` prop to `<ConfidenceGauge>`
+8. Add `<VictoryLap>` overlay (conditional via `useRef<boolean>(false)` trigger at confidence ≥ 0.85)
+9. Add `<PaneConnectionLines>` as absolute overlay in grid area
+10. Wrap container in `<BreathingGlow>` div
+11. Enhanced boot sequence: 5-phase (was 4): pulsing dot → radiating lines → "Neural Link Established" → "Materializing panes..." → fade out (~3.4s total, +600ms from base)
+12. Pane-by-pane stagger reveal: `variants` with `custom={0|1|2}`, 150ms delay between each pane
+13. Lift elapsed time into `useRef<number>(0)` for VictoryLap stats; shared via prop to `HeaderStats`
+
+**Updated layout:**
+```
+[BreathingGlow wrapper]
+  [HeaderStats]
+  [PaneConnectionLines (absolute)]
+  [PlanPaneEnhanced | WorkPaneEnhanced | ThoughtsPane]  grid-cols-[1fr_2fr_1fr]
+  [ActivityTimeline]                                      h-8
+  [ConfidenceGauge + Sparkline]
+  [VictoryLap overlay (conditional)]
+```
+
+---
+
+### 4.9 Additional Glass Brain Enhancements (Not Yet Implemented)
 
 These are additional theatrical features that can be added iteratively after the core Glass Brain is working:
 
@@ -935,25 +1396,76 @@ Implementation: POST to `/api/projects/[id]/events` with a mock `test_result` fa
 **Phase 2: ✅ COMPLETE**
 
 - [x] Project creation multi-step form works end-to-end (create → upload → process → redirect to `/projects/[id]`)
+- [x] GitHub URL and file uploads optional; at least one source required before submit
+- [x] Target framework: Next.js selectable; others show "Coming soon"
 - [x] File upload to Supabase Storage (presigned URL, `project_assets`)
 - [x] Processing trigger queues a BullMQ job (`queueProjectProcessing`)
 - [x] Worker runs Code-Synapse (Daytona or local), Right Brain (if configured), Gemini planner, inserts slices
 - [x] Project detail page `/projects/[id]` shows status, confidence, slices list; "View Plan" when ready
+- [x] Project detail actions: Stop processing (when processing/building), Delete project (with confirmation)
+- [x] DELETE `/api/projects/[id]` (cascades to assets, slices, events)
 - [x] Slice build API POST `/api/projects/[id]/slices/[sliceId]/build` (202, OpenHands when configured)
 - [x] Events API: POST (callback), GET (polling with `?after=`)
 - [x] MCP proxy routes for Left Brain and Right Brain
+- [x] Supabase migration for projects tables; structured API logging; Redis unavailability handling
 - [x] No mock or TODO data in Phase 2 implementation
 
-**Phases 3–4: 🚧 IN PROGRESS**
+**Phase 3: ✅ COMPLETE**
 
-- [ ] Slice dependency graph renders with React Flow (Phase 3)
-- [ ] Glass Brain Dashboard renders all three panes (Phase 4)
-- [ ] Real-time events stream via Supabase Realtime
-- [ ] Confidence gauge animates on score changes
-- [ ] Ghost Typer effect works for code_write events
-- [ ] Sound effects play on key events (when unmuted)
-- [ ] Glitch effect triggers on test failures
-- [ ] Self-Healing Spotlight dims other panes during diagnosis
+- [x] Plan page loads with stats bar, toolbar, sidebar, and dependency graph
+- [x] Stats bar shows 5 animated metric cells (Total, Complete, Building, Ready, Avg Confidence) with progress bar
+- [x] Toolbar: debounced search filters both sidebar and graph, status filter dropdown with checkbox items
+- [x] View toggle switches between graph and list views; preference persisted to localStorage
+- [x] Collapsible sidebar (280px) with filtered slice cards, stagger animations, selected highlighting
+- [x] Slice cards: glass styling, confidence ring (24px), dep count, BC/CC badges, search highlighting, selected glow
+- [x] Status badges: per-status icons (Clock, Target, Loader2 spin, FlaskConical, Heart pulse, CheckCircle2, XCircle), size prop
+- [x] Dependency graph: topological layered layout (left-to-right dependency flow), rich nodes with confidence ring + status icon + dep count + left accent border
+- [x] Graph: MiniMap with status-colored nodes, arrow markers on edges, synapse pulse animation on building edges
+- [x] Hovering a graph node dims unrelated nodes (opacity 0.2) and highlights full dependency chain (upstream + downstream)
+- [x] Clicking a node/card opens the detail sheet; "Build Next" selects highest-priority buildable slice
+- [x] Detail sheet: 3 tabs (Overview with modernization flags + dep counts, Contracts with syntax-colored JSON, Dependencies with clickable nav)
+- [x] "Build This Slice" button in detail sheet: optimistic status update, POST to build API, toast feedback
+- [x] Disabled build button with tooltip when deps not complete / already in progress / already complete
+- [x] Confidence ring component: SVG radial progress with animated fill, 4 color tiers, respects prefers-reduced-motion
+- [x] `pnpm build` passes without errors
+- [x] No mock or TODO data in Phase 3 implementation
+
+**Phase 4 (Base): ✅ COMPLETE**
+
+- [x] Glass Brain Dashboard renders all three panes with CSS Grid `grid-cols-[1fr_2fr_1fr]`
+- [x] Boot Sequence overlay: 3-phase animation (pulsing dot → radiating lines → "NEURAL LINK ESTABLISHED" → fade out, ~2.8s)
+- [x] Real-time events stream via Supabase Realtime with polling fallback (1s interval, `/api/projects/[id]/events?after=`)
+- [x] Confidence gauge: full-width animated bar with 4-stop gradient, "Ship Ready" threshold at 85%, glow intensification by tier
+- [x] Ghost Typer effect for code_write events (15ms/char, electric-cyan block cursor, requestAnimationFrame loop)
+- [x] Simple syntax highlighting in code blocks (keywords in cyan, strings in green, comments dimmed)
+- [x] Sound effects via `useSoundEffects` hook (keystroke, success, error, heal, tick) with mute toggle
+- [x] Glitch effect on test failures: `animate-glitch` class + red scanline overlay (motion.div traveling top-to-bottom)
+- [x] Self-Healing Spotlight: dims Plan and Work panes to 0.4 opacity for 3s on self_heal event
+- [x] Thoughts Pane: category detection (Planning/Implementing/Testing/Debugging/Healing), decreasing opacity cards, self-heal highlighting
+- [x] Work Pane: per-event-type rendering with icons, auto-scroll with manual scroll detection + "Jump to Latest" FAB
+- [x] Plan Pane: compact dependency graph header with completed/total counter, reuses SliceGraph
+- [x] Header bar: project name, active slice name + status badge, elapsed timer (MM:SS), mute toggle
+- [x] Elapsed Timer component tracking build duration
+- [x] Event deduplication by ID across Realtime and initial fetch
+- [x] Respects `prefers-reduced-motion` (boot sequence skipped)
+- [x] `pnpm build` passes without errors
+
+**Phase 4 Upgrade (Demo-Worthy Enhancements): ✅ COMPLETE**
+
+- [x] `derive-stats.ts`: Pure utility with `deriveStats()`, `getAgentStatusLabel()`, `getConfidenceHistory()`, `getConfidenceBreakdown()`, `countLinesOfCode()`, `getTestSummary()`, `getEventTypeColor()`, `timeAgo()`
+- [x] `header-stats.tsx`: Rich header replacing basic header bar — pulsing agent status dot (color from latest event), animated live counters (LOC, Tests, Tools, Self-Heals via rAF), project/slice context, shared elapsed timer ref
+- [x] `confidence-sparkline.tsx`: SVG polyline confidence trajectory with gradient fill + glowing current-value dot; renders only when ≥ 2 history points
+- [x] `confidence-gauge.tsx` enhanced: embedded sparkline, milestone tick marks at 25%/50%/75%, score wrapped in Tooltip with weighted confidence breakdown
+- [x] `plan-pane-enhanced.tsx`: MiniProgressBar (stacked status segments), ActiveSliceSpotlight (cyan-bordered card, ConfidenceRing 32px, current step), SliceMiniCards (compact list with 24px rings), List ↔ Graph view toggle
+- [x] `work-pane-enhanced.tsx`: Slice context headers on slice_id change, test result summary cards (green/red), code block labels (filename/language), relative timestamps (every 5th or >30s gap), observation group border styling — all existing features preserved
+- [x] `activity-timeline.tsx`: Horizontal h-8 event density strip with color-coded ticks, larger dots for test_result/self_heal, slice background bands (6% opacity), hover tooltip with closest-event detection
+- [x] `victory-lap.tsx`: Full-screen celebration at confidence ≥ 85% — animated score (spring 0→1), "TRANSMUTATION COMPLETE", 2×2 stats grid with rAF counters, 40 particle burst, "View Plan" CTA, auto-dismiss 8s
+- [x] `ambient-effects.tsx`: PaneConnectionLines (shimmer dividers at pane boundaries), BreathingGlow wrapper (dynamic boxShadow scaling with confidence, 4s infinite cycle)
+- [x] `glass-brain-dashboard.tsx` rewired: all new components integrated, enhanced 5-phase boot sequence (+600ms, "Materializing panes..."), pane-by-pane stagger reveal (150ms delay), VictoryLap trigger via useRef, shared elapsedRef, BreathingGlow wrapper
+- [x] `styles/tailwind.css`: `breathing-glow` keyframe animation, `.glow-success` and `.glow-success-strong` utilities
+- [x] No new npm dependencies added
+- [x] Respects `prefers-reduced-motion` (particles skipped in VictoryLap, instant display)
+- [x] `pnpm build` passes without errors (strict TS, noUncheckedIndexedAccess)
 
 ---
 

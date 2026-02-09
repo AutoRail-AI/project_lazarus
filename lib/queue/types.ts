@@ -29,8 +29,14 @@ export interface ProjectProcessingJobData {
   targetFramework?: string
 }
 
+export interface SliceBuildJobData {
+  projectId: string
+  sliceId: string
+  userId: string
+}
+
 // Union of all job data types
-export type JobData = EmailJobData | ProcessingJobData | WebhookJobData | ProjectProcessingJobData
+export type JobData = EmailJobData | ProcessingJobData | WebhookJobData | ProjectProcessingJobData | SliceBuildJobData
 
 // Job result types
 export interface JobResult {
@@ -46,6 +52,7 @@ export const QUEUE_NAMES = {
   PROCESSING: "processing",
   WEBHOOKS: "webhooks",
   PROJECT_PROCESSING: "project-processing",
+  SLICE_BUILD: "slice-build",
 } as const
 
 export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES]

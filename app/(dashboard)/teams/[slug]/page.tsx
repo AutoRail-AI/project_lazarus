@@ -12,7 +12,7 @@ export default async function TeamDetailPage({
   const { slug } = await params
 
   return (
-    <div className="space-y-6 py-6 animate-fade-in">
+    <div className="max-w-7xl mx-auto space-y-6 py-6 animate-fade-in">
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="sm" asChild>
           <Link href="/teams">

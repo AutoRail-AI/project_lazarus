@@ -232,10 +232,10 @@ Define a `code-synapse-runner` service:
 
 ## Integration Points with Phase 2
 
-### 1. Project Creation Form (unchanged)
-- User provides GitHub URL (validated)
-- User uploads videos, documents
-- POST /api/projects, upload, POST /process
+### 1. Project Creation Form
+- User provides GitHub URL (optional, validated if provided) and/or uploads videos/documents
+- At least one source required: GitHub URL or files
+- POST /api/projects, upload (if files), POST /process
 
 ### 2. Worker: `processProjectJob` (major update)
 
@@ -279,10 +279,23 @@ OpenHands needs the **same MCP server** throughout development:
 
 ---
 
+## Operational Requirements (Phase 2 Infrastructure)
+
+**Redis:** Required for BullMQ job queues. Start with `docker run -d -p 6379:6379 redis:7-alpine` or use Docker Compose. If Redis is unavailable, the process API returns 503 with a clear message; project status is reverted to `pending`.
+
+**Supabase migration:** Run `pnpm migrate` to create `projects`, `project_assets`, `vertical_slices`, and `agent_events` tables. Create `project-videos` and `project-documents` storage buckets in the Supabase Dashboard for file uploads.
+
+**Project creation:** GitHub URL and file uploads are optional individually; at least one source is required. Target framework: Next.js is selectable; others show "Coming soon."
+
+**Project detail actions:** Stop processing (when status is `processing` or `building`) and Delete project (with confirmation) are available on the project detail page.
+
+---
+
 ## Environment Variables
 
 | Variable | Purpose |
 |----------|---------|
+| `REDIS_URL` | Redis connection (default: `redis://localhost:6379`); required for BullMQ job queues |
 | `DAYTONA_API_KEY` | API key for Daytona (required if using Daytona) |
 | `DAYTONA_API_URL` | Daytona API URL (default: `https://app.daytona.io/api`) |
 | `CODE_SYNAPSE_CLI_PATH` | Path to `code-synapse` binary (default: `code-synapse` from PATH) |

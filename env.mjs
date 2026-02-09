@@ -31,12 +31,16 @@ export const env = createEnv({
     TAVILY_API_KEY: z.string().optional(),
     GEMINI_API_KEY: z.string().optional(),
     OPENHANDS_API_URL: z.string().url().optional(),
-    LEFT_BRAIN_MCP_URL: z.string().url().optional(),
-    RIGHT_BRAIN_MCP_URL: z.string().url().optional(),
+    LEFT_BRAIN_API_URL: z.string().url().optional(),
+    RIGHT_BRAIN_API_URL: z.string().url().optional(),
     DEMO_MODE: z.enum(["true", "false"]).optional().transform((value) => value === "true"),
-    // Daytona Sandbox
+    // noVNC Browser Stream
+    NOVNC_URL: z.string().url().optional(),
+    // Daytona Sandbox (per https://www.daytona.io/docs/en/typescript-sdk)
     DAYTONA_API_KEY: z.string().optional(),
     DAYTONA_API_URL: z.string().url().optional(),
+    DAYTONA_TARGET: z.string().optional(),
+    DAYTONA_SNAPSHOT: z.string().optional(),
     // Code-Synapse CLI
     CODE_SYNAPSE_CLI_PATH: z.string().optional(),
     CODE_SYNAPSE_SKIP_JUSTIFY: z.enum(["true", "false"]).optional().transform((value) => value === "true"),
@@ -68,6 +72,7 @@ export const env = createEnv({
     NEXT_PUBLIC_POSTHOG_KEY: z.string().optional(),
     NEXT_PUBLIC_POSTHOG_HOST: z.string().refine((val) => !val || /^https?:\/\//.test(val), "Invalid URL").optional(),
     NEXT_PUBLIC_DEMO_MODE: z.enum(["true", "false"]).optional().transform((value) => value === "true"),
+    NEXT_PUBLIC_NOVNC_URL: z.string().url().optional(),
   },
   runtimeEnv: {
     ANALYZE: process.env.ANALYZE,
@@ -94,18 +99,23 @@ export const env = createEnv({
     TAVILY_API_KEY: process.env.TAVILY_API_KEY,
     GEMINI_API_KEY: process.env.GEMINI_API_KEY,
     OPENHANDS_API_URL: process.env.OPENHANDS_API_URL,
-    LEFT_BRAIN_MCP_URL: process.env.LEFT_BRAIN_MCP_URL,
-    RIGHT_BRAIN_MCP_URL: process.env.RIGHT_BRAIN_MCP_URL,
+    LEFT_BRAIN_API_URL: process.env.LEFT_BRAIN_API_URL,
+    RIGHT_BRAIN_API_URL: process.env.RIGHT_BRAIN_API_URL,
     DEMO_MODE: process.env.DEMO_MODE,
     // Daytona Sandbox
     DAYTONA_API_KEY: process.env.DAYTONA_API_KEY,
     DAYTONA_API_URL: process.env.DAYTONA_API_URL,
+    DAYTONA_TARGET: process.env.DAYTONA_TARGET,
+    DAYTONA_SNAPSHOT: process.env.DAYTONA_SNAPSHOT,
     // Code-Synapse CLI
     CODE_SYNAPSE_CLI_PATH: process.env.CODE_SYNAPSE_CLI_PATH,
     CODE_SYNAPSE_SKIP_JUSTIFY: process.env.CODE_SYNAPSE_SKIP_JUSTIFY,
     // Workspaces
     WORKSPACES_ROOT: process.env.WORKSPACES_ROOT,
     NEXT_PUBLIC_DEMO_MODE: process.env.NEXT_PUBLIC_DEMO_MODE,
+    // noVNC Browser Stream
+    NOVNC_URL: process.env.NOVNC_URL,
+    NEXT_PUBLIC_NOVNC_URL: process.env.NEXT_PUBLIC_NOVNC_URL,
     // Organization Settings
     ORGANIZATION_LIMIT: process.env.ORGANIZATION_LIMIT,
     MEMBERSHIP_LIMIT: process.env.MEMBERSHIP_LIMIT,

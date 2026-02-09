@@ -1,5 +1,5 @@
 import { formatDistanceToNow } from "date-fns"
-import { Activity, AlertCircle, ArrowRight, CheckCircle2, Clock } from "lucide-react"
+import { Activity, AlertCircle, ArrowRight, CheckCircle2, Clock, Pause } from "lucide-react"
 import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
@@ -17,18 +17,24 @@ export function ProjectCard({ project }: ProjectCardProps) {
   const statusColors = {
     pending: "bg-slate-grey text-muted-foreground border-border",
     processing: "bg-electric-cyan/10 text-electric-cyan border-electric-cyan/20",
+    analyzed: "bg-electric-cyan/10 text-electric-cyan border-electric-cyan/20",
     ready: "bg-rail-purple/10 text-quantum-violet border-rail-purple/20",
     building: "bg-warning/10 text-warning border-warning/20",
     complete: "bg-success/10 text-success border-success/20",
+    failed: "bg-destructive/10 text-destructive border-destructive/20",
+    paused: "bg-warning/10 text-warning border-warning/20",
   }
 
   const isLoading = project.status === "processing" || project.status === "building"
   const statusIcons = {
     pending: Clock,
     processing: Activity,
+    analyzed: CheckCircle2,
     ready: CheckCircle2,
     building: Activity,
     complete: CheckCircle2,
+    failed: AlertCircle,
+    paused: Pause,
   }
   const StatusIcon = statusIcons[project.status] ?? AlertCircle
 

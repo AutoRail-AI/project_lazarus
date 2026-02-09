@@ -1,68 +1,66 @@
 /**
- * Daytona sandbox orchestration.
- * Uses Daytona REST API to create sandboxes, clone repos, and run commands.
+ * Daytona sandbox orchestration using the official @daytonaio/sdk only.
+ * Uses env vars: DAYTONA_API_KEY, DAYTONA_API_URL, DAYTONA_TARGET (per SDK docs).
+ * See: https://www.daytona.io/docs/en/typescript-sdk
  */
 
-import { env } from "@/env.mjs"
+import { Daytona } from "@daytonaio/sdk"
+import type { Sandbox } from "@daytonaio/sdk"
 
-function getDaytonaConfig() {
-  const apiKey = env.DAYTONA_API_KEY
-  const apiUrl = env.DAYTONA_API_URL
-  if (!apiKey || !apiUrl) {
-    throw new Error("DAYTONA_API_KEY and DAYTONA_API_URL are required")
-  }
-  return { apiKey, apiUrl }
-}
-
-async function daytonaFetch(path: string, options: RequestInit = {}) {
-  const { apiKey, apiUrl } = getDaytonaConfig()
-  const response = await fetch(`${apiUrl}${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-      ...options.headers,
-    },
-  })
-
-  if (!response.ok) {
-    const text = await response.text().catch(() => "")
-    throw new Error(`Daytona API error ${response.status}: ${text}`)
-  }
-
-  return response
-}
+let daytonaClient: Daytona | null = null
 
 /**
- * Create a new Daytona sandbox.
- * Critical: autoStopInterval must be 0 to prevent mid-process auto-stop.
+ * Get Daytona client. Uses SDK default: env vars DAYTONA_API_KEY, DAYTONA_API_URL, DAYTONA_TARGET.
+ * Lazy init per RULESETS.
+ */
+function getDaytona(): Daytona {
+  if (!daytonaClient) {
+    daytonaClient = new Daytona()
+  }
+  return daytonaClient
+}
+
+export const sandboxCache = new Map<string, Sandbox>()
+
+/**
+ * Create a new Daytona sandbox via the official SDK.
+ * Uses DAYTONA_SNAPSHOT if set (e.g. daytona-medium for 4GiB to avoid OOM during pnpm install).
+ * Disables auto-stop so long-running Code-Synapse steps don't get stopped.
  */
 export async function createDaytonaSandbox(): Promise<string> {
-  const response = await daytonaFetch("/sandboxes", {
-    method: "POST",
-    body: JSON.stringify({
+  const daytona = getDaytona()
+  const snapshot =
+    process.env.DAYTONA_SNAPSHOT ?? "daytona-medium"
+  const sandbox = await daytona.create(
+    {
+      snapshot,
       language: "javascript",
       autoStopInterval: 0,
-      resources: { cpu: 2, memory: 4, disk: 8 },
-    }),
-  })
+    },
+    { timeout: 120 }
+  )
+  sandboxCache.set(sandbox.id, sandbox)
+  return sandbox.id
+}
 
-  const data = (await response.json()) as { id: string }
-  return data.id
+function getSandbox(sandboxId: string): Sandbox {
+  const sandbox = sandboxCache.get(sandboxId)
+  if (!sandbox) {
+    throw new Error(`Sandbox ${sandboxId} not found in cache. Create it first.`)
+  }
+  return sandbox
 }
 
 /**
- * Clone a GitHub repo into the sandbox.
+ * Clone a GitHub repo into the sandbox using the SDK's git.clone.
  */
 export async function cloneRepoInSandbox(
   sandboxId: string,
   githubUrl: string,
   targetPath: string
 ): Promise<void> {
-  await daytonaFetch(`/sandboxes/${sandboxId}/git/clone`, {
-    method: "POST",
-    body: JSON.stringify({ url: githubUrl, path: targetPath }),
-  })
+  const sandbox = getSandbox(sandboxId)
+  await sandbox.git.clone(githubUrl, targetPath)
 }
 
 /**
@@ -73,23 +71,17 @@ export async function executeCommand(
   command: string,
   workdir: string
 ): Promise<string> {
-  const response = await daytonaFetch(
-    `/sandboxes/${sandboxId}/process/execute`,
-    {
-      method: "POST",
-      body: JSON.stringify({ command, cwd: workdir }),
-    }
-  )
-
-  const data = (await response.json()) as { output: string; exitCode: number }
-  if (data.exitCode !== 0) {
-    throw new Error(`Command failed (exit ${data.exitCode}): ${data.output}`)
+  const sandbox = getSandbox(sandboxId)
+  const response = await sandbox.process.executeCommand(command, workdir, undefined, 0)
+  if (response.exitCode !== 0) {
+    const output = (response as { result?: string }).result ?? response.artifacts?.stdout ?? ""
+    throw new Error(`Command failed (exit ${response.exitCode}): ${output}`)
   }
-  return data.output
+  return (response as { result?: string }).result ?? response.artifacts?.stdout ?? ""
 }
 
 /**
- * Start a background process in the sandbox via sessions.
+ * Start a background process in the sandbox via a session.
  */
 export async function startBackgroundProcess(
   sandboxId: string,
@@ -97,20 +89,13 @@ export async function startBackgroundProcess(
   command: string,
   workdir: string
 ): Promise<void> {
-  // Create session
-  await daytonaFetch(`/sandboxes/${sandboxId}/process/sessions`, {
-    method: "POST",
-    body: JSON.stringify({ name: sessionName }),
+  const sandbox = getSandbox(sandboxId)
+  await sandbox.process.createSession(sessionName)
+  const runCommand = workdir ? `cd ${workdir} && ${command}` : command
+  await sandbox.process.executeSessionCommand(sessionName, {
+    command: runCommand,
+    runAsync: true,
   })
-
-  // Execute command async in session
-  await daytonaFetch(
-    `/sandboxes/${sandboxId}/process/sessions/${sessionName}/execute`,
-    {
-      method: "POST",
-      body: JSON.stringify({ command, cwd: workdir, runAsync: true }),
-    }
-  )
 }
 
 /**
@@ -120,17 +105,66 @@ export async function getPreviewLink(
   sandboxId: string,
   port: number
 ): Promise<{ url: string; token?: string }> {
-  const response = await daytonaFetch(
-    `/sandboxes/${sandboxId}/preview/${port}`
-  )
-
-  const data = (await response.json()) as { url: string; token?: string }
-  return data
+  const sandbox = getSandbox(sandboxId)
+  const preview = await sandbox.getPreviewLink(port)
+  return { url: preview.url, token: preview.token }
 }
 
 /**
- * Destroy a sandbox.
+ * Reconnect to an existing Daytona sandbox by ID.
+ * Fetches the sandbox via SDK and adds it to the cache so subsequent
+ * calls (executeCommand, etc.) can find it.
+ */
+export async function getSandboxById(sandboxId: string): Promise<Sandbox> {
+  // Return from cache if already loaded
+  const cached = sandboxCache.get(sandboxId)
+  if (cached) return cached
+
+  const daytona = getDaytona()
+  const sandbox = await daytona.get(sandboxId)
+  sandboxCache.set(sandbox.id, sandbox)
+  return sandbox
+}
+
+/**
+ * Stop a sandbox without deleting it (preserves for retry/resume).
+ * Removes from sandboxCache since the in-memory reference isn't usable after stop.
+ * Best-effort: logs warning on failure but does not throw.
+ */
+export async function stopSandbox(sandboxId: string): Promise<void> {
+  try {
+    const sandbox = sandboxCache.get(sandboxId) ?? (await getSandboxById(sandboxId))
+    await sandbox.stop(60)
+  } catch (err: unknown) {
+    console.warn(
+      `[Daytona] Failed to stop sandbox ${sandboxId} (best-effort):`,
+      err instanceof Error ? err.message : err
+    )
+  } finally {
+    sandboxCache.delete(sandboxId)
+  }
+}
+
+/**
+ * Destroy a sandbox and remove it from the cache.
  */
 export async function destroySandbox(sandboxId: string): Promise<void> {
-  await daytonaFetch(`/sandboxes/${sandboxId}`, { method: "DELETE" })
+  const sandbox = sandboxCache.get(sandboxId)
+  if (sandbox) {
+    try {
+      await sandbox.delete(60)
+    } finally {
+      sandboxCache.delete(sandboxId)
+    }
+  } else {
+    // Not in cache — try to fetch and delete
+    try {
+      const fetched = await getSandboxById(sandboxId)
+      await fetched.delete(60)
+    } catch {
+      // Sandbox may already be deleted
+    } finally {
+      sandboxCache.delete(sandboxId)
+    }
+  }
 }

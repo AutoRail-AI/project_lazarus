@@ -33,10 +33,15 @@ export function getRedis(): Redis {
       },
     })
 
-    // Only set up event handlers if not in build context
+    // Only set up event handlers if not in build context; throttle error logs to avoid spam
     if (typeof process !== "undefined" && process.env.NODE_ENV !== "production") {
+      let errorLogged = false
       redisInstance.on("error", (error) => {
-        console.error("Redis connection error:", error)
+        if (!errorLogged) {
+          errorLogged = true
+          const msg = error instanceof Error ? error.message : String(error)
+          console.warn("Redis connection error (start Redis with: docker run -d -p 6379:6379 redis:7-alpine):", msg)
+        }
       })
 
       redisInstance.on("connect", () => {

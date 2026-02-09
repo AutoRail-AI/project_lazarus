@@ -108,9 +108,29 @@ Traditional migrations rebuild by layer. Lazarus rebuilds by feature using verti
 
 **BullMQ + Redis:** Background job processing with retries and prioritization.
 
-**Queues:** email (sending), processing (long-running tasks), webhooks (external HTTP calls).
+**Queues:** email (sending), processing (long-running tasks), webhooks (external HTTP calls), project-processing (Left Brain → Right Brain → Gemini planner), slice-build (individual slice builds).
 
 **Usage:** Queue ingestion tasks, code generation steps, email notifications, webhook deliveries.
+
+---
+
+## Pipeline Lifecycle & Checkpoint/Resume
+
+The project processing pipeline (Left Brain → Right Brain → Gemini Planner) supports checkpointing, pause/resume, and structured error tracking. State is stored in the project row (not Redis) so it survives Redis restarts and is visible to the frontend.
+
+**Pipeline Steps:** `left_brain` → `right_brain` → `planning` → `slice:<id>` (per-slice build)
+
+**Checkpoint (`pipeline_checkpoint` JSONB):** After each major step completes, a checkpoint is saved containing `completed_steps[]`, cached results (`left_brain_result`, `right_brain_result`), and metadata (`sandbox_id`, `mcp_url`, `slices_generated`). On resume, the worker loads the checkpoint and skips completed steps.
+
+**Error Context (`error_context` JSONB):** When a step fails, structured error info is stored: `step`, `message`, `timestamp`, `retryable`, `stack`. This is displayed on the project detail page and cleared on resume/retry.
+
+**Pause/Resume:** The "Pause" action sets status to `paused` and attempts to cancel the BullMQ job. The worker checks for `paused` status between steps and exits gracefully. Resume clears the error and re-queues — the worker loads the checkpoint and continues.
+
+**Smart Retry:** `POST /api/projects/[id]/retry?mode=resume|restart|auto`. `resume` keeps the checkpoint; `restart` clears it and resets brain statuses; `auto` resumes if a checkpoint exists, otherwise restarts.
+
+**Slice Orchestration:** Event-driven, not polling. When a slice completes (via `test_result` event with `passed=true` and confidence ≥ 85%), `onSliceComplete` → `triggerNextSliceBuild` chains to the next buildable slice. Failed slices enter self-healing (up to 5 retries), then stop the pipeline for manual intervention. Individual slices can be retried via `POST /api/projects/[id]/slices/[sliceId]/retry`.
+
+**Status Values:** `pending` → `processing` → `ready` → `building` → `complete`. Failure at any point → `failed`. User pause → `paused`. Both `failed` and `paused` support resume from checkpoint.
 
 ---
 
@@ -203,6 +223,8 @@ Traditional migrations rebuild by layer. Lazarus rebuilds by feature using verti
 **lib/ai:** Agent runner, tools, Gemini integration.
 
 **lib/queue:** BullMQ queues and workers.
+
+**lib/pipeline:** Pipeline orchestrator (checkpoints, error context), slice builder (event-driven orchestration), types.
 
 **lib/activity:** Activity feed.
 

@@ -3,7 +3,18 @@ import { env } from "@/env.mjs"
 import { generateSlices } from "@/lib/ai/gemini-planner"
 import { supabase } from "@/lib/db"
 import type { Database } from "@/lib/db/types"
+import { processDemoProjectJob } from "@/lib/demo"
 import { createRightBrainClient } from "@/lib/mcp/right-brain-client"
+import {
+  advancePipelineStep,
+  clearErrorContext,
+  loadCheckpoint,
+  runBrainsInParallel,
+  saveCheckpoint,
+  setErrorContext,
+  storeBuildJobId,
+} from "@/lib/pipeline"
+import type { PipelineCheckpoint, PipelineStep } from "@/lib/pipeline/types"
 import { runCodeSynapse } from "@/lib/workspaces/code-synapse-runner"
 import { createRedisConnection } from "./redis"
 import {
@@ -127,233 +138,348 @@ async function insertThought(
 }
 
 /**
- * Project processing job — orchestrates Left Brain → Right Brain → Gemini planner.
+ * Project processing job — orchestrates Code Analysis → App Behaviour → Gemini planner.
+ * Now with checkpoint support: skips completed steps on resume.
  */
 async function processProjectJob(
   job: Job<ProjectProcessingJobData>
 ): Promise<JobResult> {
+  // Demo mode: route to demo pipeline (real MCP + Gemini, no Daytona)
+  if (env.DEMO_MODE) {
+    console.log(`[Project Processing] DEMO_MODE active — using demo pipeline`)
+    return processDemoProjectJob(job)
+  }
+
   const { projectId, userId, githubUrl, targetFramework } = job.data
 
   console.log(`[Project Processing] Starting for project ${projectId}`)
 
+  // Store job ID for cancellation support
+  if (job.id) {
+    await storeBuildJobId(projectId, job.id)
+  }
+
+  // Load existing checkpoint or initialize empty
+  let checkpoint: PipelineCheckpoint = (await loadCheckpoint(projectId)) ?? {
+    completed_steps: [],
+    last_updated: new Date().toISOString(),
+  }
+
+  const isStepDone = (step: string) => checkpoint.completed_steps.includes(step as any)
+
+  // Detect if this is a resumed job from the configure route.
+  const brainsAlreadyDone = isStepDone("left_brain") && isStepDone("right_brain")
+
+  // Clear any previous error context
+  await clearErrorContext(projectId)
+
   try {
-    await insertThought(projectId, "Beginning project analysis...")
+    await insertThought(projectId, brainsAlreadyDone ? "Resuming — generating implementation plan..." : "Beginning project analysis...")
     await job.updateProgress(5)
 
-    let codeAnalysis: Record<string, unknown> = {}
-    let behavioralAnalysis: Record<string, unknown> = {}
-    let sandboxId: string | undefined
+    let codeAnalysis: Record<string, unknown> = checkpoint.left_brain_result ?? {}
+    let behavioralAnalysis: Record<string, unknown> = checkpoint.right_brain_result ?? {}
+    let sandboxId: string | undefined = checkpoint.sandbox_id
 
-    // --- LEFT BRAIN ---
-    if (githubUrl) {
-      await (supabase as any)
-        .from("projects")
-        .update({ left_brain_status: "processing", updated_at: new Date().toISOString() })
-        .eq("id", projectId)
+    const needsLeftBrain = !isStepDone("left_brain")
+    const needsRightBrain = !isStepDone("right_brain")
 
-      await insertThought(projectId, "Running Code-Synapse analysis on repository...")
-
-      try {
-        const { client, metadata } = await runCodeSynapse(projectId, githubUrl)
-        sandboxId = metadata.sandboxId
-
-        await job.updateProgress(20)
-        await insertThought(projectId, "Extracting feature map...")
-
-        const featureMap = await client.getFeatureMap(true)
-        await job.updateProgress(30)
-
-        await insertThought(projectId, "Analyzing slice dependencies...")
-        const sliceDeps = await client.getSliceDependencies()
-        await job.updateProgress(40)
-
-        await insertThought(projectId, "Gathering project statistics...")
-        const stats = await client.getProjectStats()
-        await job.updateProgress(45)
-
-        // Get migration context for each feature
-        const features = (featureMap as { features?: Array<{ name: string }> })?.features || []
-        const migrationContexts: Record<string, unknown> = {}
-
-        for (const feature of features) {
-          if (feature.name) {
-            try {
-              await insertThought(projectId, `Analyzing migration context for "${feature.name}"...`)
-              migrationContexts[feature.name] = await client.getMigrationContext(feature.name)
-            } catch (err: unknown) {
-              console.warn(`Failed to get migration context for ${feature.name}:`, err)
-            }
-          }
-        }
-
-        await job.updateProgress(55)
-
-        codeAnalysis = {
-          featureMap,
-          sliceDeps,
-          stats,
-          migrationContexts,
-          mcpUrl: metadata.mcpUrl,
-        }
-
-        await (supabase as any)
-          .from("projects")
-          .update({ left_brain_status: "complete", updated_at: new Date().toISOString() })
-          .eq("id", projectId)
-
-        await insertThought(projectId, "Code analysis complete.")
-      } catch (err: unknown) {
-        console.error("[Left Brain] Failed:", err)
-        await (supabase as any)
-          .from("projects")
-          .update({ left_brain_status: "failed", updated_at: new Date().toISOString() })
-          .eq("id", projectId)
-        await insertThought(
-          projectId,
-          `Code analysis failed: ${err instanceof Error ? err.message : "Unknown error"}`
-        )
-      }
-    }
-
-    // --- RIGHT BRAIN ---
-    if (env.RIGHT_BRAIN_MCP_URL) {
-      // Check if project has assets
+    // Pre-fetch App Behaviour prerequisites (assets check) before parallel execution
+    let projectAssets: Array<{ storage_path: string }> = []
+    if (needsRightBrain && env.RIGHT_BRAIN_API_URL) {
       const { data: assets } = await (supabase as any)
         .from("project_assets")
         .select("*")
         .eq("project_id", projectId) as { data: Array<{ storage_path: string }> | null }
+      projectAssets = assets ?? []
+    }
 
-      if (assets && assets.length > 0) {
-        await (supabase as any)
-          .from("projects")
-          .update({ right_brain_status: "processing", updated_at: new Date().toISOString() })
-          .eq("id", projectId)
+    // --- RUN BRAINS IN PARALLEL ---
+    // Code Analysis (code structure) and App Behaviour (behavioral ingestion) run concurrently.
+    // Contract generation happens after both complete (needs Code Analysis's featureMap).
+    const brainResults = await runBrainsInParallel({
+      projectId,
+      runLeftBrain: needsLeftBrain && githubUrl
+        ? async () => {
+            await insertThought(projectId, "[Code Analysis] Running Code-Synapse analysis on repository...")
 
-        await insertThought(projectId, "Starting behavioral analysis with Right Brain...")
+            const { client, metadata } = await runCodeSynapse(
+              projectId,
+              githubUrl,
+              async (msg) => { await insertThought(projectId, `[Code Analysis] ${msg}`) },
+              sandboxId ? { instanceId: sandboxId } : undefined
+            )
 
-        try {
-          const rbClient = createRightBrainClient()
+            await job.updateProgress(20)
+            await insertThought(projectId, "[Code Analysis] Building knowledge graph and extracting feature domains...")
+            const featureMap = await client.deriveFeatureMap()
+            await job.updateProgress(35)
 
-          const s3Refs = assets.map((a) => a.storage_path)
-          const ingestResult = await rbClient.startIngestion({
-            website_url: githubUrl,
-            knowledge_id: projectId,
-            s3_references: s3Refs,
-          })
+            await insertThought(projectId, "[Code Analysis] Gathering project statistics...")
+            const stats = await client.getStatsOverview()
+            await job.updateProgress(45)
 
-          await job.updateProgress(65)
-
-          const workflow = await rbClient.waitForWorkflow(ingestResult.job_id)
-
-          if (workflow.status === "failed") {
-            throw new Error(`Right Brain workflow failed: ${workflow.error}`)
-          }
-
-          await job.updateProgress(75)
-
-          // Generate contracts for each feature
-          const features = (codeAnalysis.featureMap as { features?: Array<{ name: string }> })?.features || []
-          const contracts: Record<string, unknown> = {}
-
-          for (const feature of features) {
-            if (feature.name) {
-              try {
-                const contract = await rbClient.generateContract(projectId, feature.name)
-                const leftBrainFormat = await rbClient.getContractLeftBrain(contract.contract_id)
-                contracts[feature.name] = leftBrainFormat
-              } catch (err: unknown) {
-                console.warn(`Failed to generate contract for ${feature.name}:`, err)
-              }
+            await insertThought(projectId, `[Code Analysis] Found ${featureMap.totalFeatures} feature domains spanning ${featureMap.totalEntities} entities`)
+            await insertThought(projectId, "[Code Analysis] Code analysis complete.")
+            return {
+              featureMap,
+              stats,
+              mcpUrl: metadata.mcpUrl,
+              _sandboxId: metadata.sandboxId,
             }
           }
+        : undefined,
 
-          behavioralAnalysis = { contracts, workflow }
+      runRightBrain: needsRightBrain && env.RIGHT_BRAIN_API_URL && projectAssets.length > 0
+        ? async () => {
+            await insertThought(projectId, "[App Behaviour] Starting behavioral analysis...")
 
-          await (supabase as any)
-            .from("projects")
-            .update({ right_brain_status: "complete", updated_at: new Date().toISOString() })
-            .eq("id", projectId)
+            const rbClient = createRightBrainClient()
 
-          await insertThought(projectId, "Behavioral analysis complete.")
-        } catch (err: unknown) {
-          console.error("[Right Brain] Failed:", err)
-          await (supabase as any)
-            .from("projects")
-            .update({ right_brain_status: "failed", updated_at: new Date().toISOString() })
-            .eq("id", projectId)
+            const s3Refs = projectAssets.map((a) => a.storage_path)
+            const ingestResult = await rbClient.startIngestion({
+              website_url: githubUrl,
+              knowledge_id: projectId,
+              s3_references: s3Refs,
+            })
+
+            await job.updateProgress(65)
+
+            const workflow = await rbClient.waitForWorkflow(ingestResult.job_id)
+            if (workflow.status === "failed") {
+              throw new Error(`App Behaviour workflow failed: ${workflow.error}`)
+            }
+
+            await insertThought(projectId, "[App Behaviour] Ingestion workflow complete.")
+            return { workflow }
+          }
+        : undefined,
+    })
+
+    // Handle Code Analysis results (non-fatal — slices can still be generated from available data)
+    if (needsLeftBrain) {
+      if (githubUrl) {
+        if (!brainResults.leftBrain.success) {
           await insertThought(
             projectId,
-            `Behavioral analysis failed: ${err instanceof Error ? err.message : "Unknown error"}`
+            `Code analysis failed: ${brainResults.leftBrain.error ?? "Unknown error"}. Will proceed with available data.`
           )
+          await setErrorContext(projectId, {
+            step: "left_brain",
+            message: brainResults.leftBrain.error ?? "Code Analysis failed",
+            timestamp: new Date().toISOString(),
+            retryable: true,
+          })
+        } else {
+          codeAnalysis = brainResults.leftBrain.data
+          sandboxId = codeAnalysis._sandboxId as string | undefined
         }
       }
+    } else {
+      console.log(`[Project Processing] Skipping left_brain (already done via checkpoint)`)
+      await insertThought(projectId, "Code Analysis restored from checkpoint.")
+    }
+
+    // Handle App Behaviour results (non-critical — failure logged but pipeline continues)
+    if (needsRightBrain) {
+      if (brainResults.rightBrain.success && brainResults.rightBrain.data.workflow) {
+        // Post-parallel step: generate contracts using Code Analysis's featureMap
+        const rbClient = createRightBrainClient()
+        const features = (codeAnalysis.featureMap as { features?: Array<{ name: string }> })?.features || []
+        const contracts: Record<string, unknown> = {}
+
+        for (const feature of features) {
+          if (feature.name) {
+            try {
+              const contract = await rbClient.generateContract(projectId, feature.name)
+              const leftBrainFormat = await rbClient.getContractLeftBrain(contract.contract_id)
+              contracts[feature.name] = leftBrainFormat
+            } catch (err: unknown) {
+              console.warn(`Failed to generate contract for ${feature.name}:`, err)
+            }
+          }
+        }
+
+        behavioralAnalysis = { contracts, workflow: brainResults.rightBrain.data.workflow }
+        await insertThought(projectId, "Behavioral analysis complete.")
+      } else if (!brainResults.rightBrain.success && brainResults.rightBrain.error) {
+        // App Behaviour failed — log but continue (non-critical)
+        await insertThought(
+          projectId,
+          `Behavioral analysis failed: ${brainResults.rightBrain.error}`
+        )
+      }
+    } else {
+      console.log(`[Project Processing] Skipping right_brain (already done via checkpoint)`)
+      await insertThought(projectId, "App Behaviour analysis restored from checkpoint.")
+    }
+
+    // Save combined checkpoint after both brains
+    if (needsLeftBrain || needsRightBrain) {
+      const newSteps: PipelineStep[] = [...checkpoint.completed_steps]
+      if (needsLeftBrain && (githubUrl ? brainResults.leftBrain.success : true)) newSteps.push("left_brain")
+      if (needsRightBrain) newSteps.push("right_brain")
+
+      checkpoint = {
+        ...checkpoint,
+        completed_steps: newSteps,
+        left_brain_result: codeAnalysis,
+        right_brain_result: behavioralAnalysis,
+        sandbox_id: sandboxId,
+        mcp_url: (codeAnalysis.mcpUrl as string) ?? checkpoint.mcp_url,
+      }
+      await saveCheckpoint(projectId, checkpoint)
+    }
+
+    // --- PAUSE CHECK ---
+    const { data: projectCheck } = await (supabase as any)
+      .from("projects")
+      .select("status")
+      .eq("id", projectId)
+      .single() as { data: { status: string } | null }
+    if (projectCheck?.status === "paused") {
+      console.log(`[Project Processing] Project ${projectId} paused, exiting gracefully.`)
+      return { success: true, message: "Paused" }
     }
 
     await job.updateProgress(80)
 
-    // --- GEMINI PLANNER ---
-    await insertThought(projectId, "Generating vertical slices...")
+    // --- ANALYSIS CHECKPOINT ---
+    // If brains just completed (not a resume from configure), save metadata and stop
+    // at 'analyzed' status so the user can review results and configure preferences.
+    if (!isStepDone("planning") && !brainsAlreadyDone) {
+      await (supabase as any)
+        .from("projects")
+        .update({
+          status: "analyzed",
+          metadata: {
+            code_analysis: codeAnalysis,
+            behavioral_analysis: behavioralAnalysis,
+            ...(sandboxId ? { daytona_sandbox_id: sandboxId } : {}),
+          },
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", projectId)
+      await insertThought(projectId, "Analysis complete. Awaiting configuration...")
+      return { success: true, message: "Analysis complete — awaiting user configuration" }
+    }
 
-    // Update project metadata with analysis results
+    // --- GEMINI PLANNER ---
+    // Reached when resumed from configure route (brains already done via checkpoint)
+    if (!isStepDone("planning")) {
+      await advancePipelineStep(projectId, "planning")
+      await insertThought(projectId, "Generating vertical slices...")
+
+      // Re-read project to pick up boilerplate_url/tech_preferences from configure
+      const { data: freshProject } = await (supabase as any)
+        .from("projects")
+        .select("metadata")
+        .eq("id", projectId)
+        .single() as { data: { metadata: Record<string, unknown> | null } | null }
+
+      const existingMetadata = (freshProject?.metadata ?? {}) as Record<string, unknown>
+      await (supabase as any)
+        .from("projects")
+        .update({
+          metadata: {
+            ...existingMetadata,
+            code_analysis: codeAnalysis,
+            behavioral_analysis: behavioralAnalysis,
+            ...(sandboxId ? { daytona_sandbox_id: sandboxId } : {}),
+          },
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", projectId)
+
+      // Fetch updated project for Gemini planner
+      type Project = Database["public"]["Tables"]["projects"]["Row"]
+      const { data: updatedProject } = await (supabase as any)
+        .from("projects")
+        .select("*")
+        .eq("id", projectId)
+        .single() as { data: Project | null }
+
+      if (updatedProject) {
+        let slices: Awaited<ReturnType<typeof generateSlices>> = []
+        try {
+          slices = await generateSlices(updatedProject, async (progress) => {
+            if (progress.phase === "architect") {
+              await insertThought(
+                projectId,
+                "Architect planning: generating migration architecture..."
+              )
+            } else {
+              await insertThought(
+                projectId,
+                `Generating implementation guides batch ${progress.batch}/${progress.totalBatches}: ${progress.currentFeatures.join(", ")}${progress.slicesGenerated > 0 ? ` (${progress.slicesGenerated} generated so far)` : ""}`
+              )
+            }
+          })
+        } catch (geminiError: unknown) {
+          const errMsg = geminiError instanceof Error ? geminiError.message : "Unknown error"
+          console.error("[Project Processing] Gemini planner failed:", geminiError)
+          await insertThought(projectId, `Gemini planner error: ${errMsg}`)
+        }
+
+        await job.updateProgress(90)
+
+        // DELETE existing slices for idempotency (prevents duplicates on retry)
+        await (supabase as any)
+          .from("vertical_slices")
+          .delete()
+          .eq("project_id", projectId)
+
+        // Insert slices into vertical_slices table
+        if (slices.length > 0) {
+          const sliceRows = slices.map((slice, index) => ({
+            project_id: projectId,
+            name: slice.name,
+            description: slice.description || null,
+            priority: slice.priority ?? index + 1,
+            status: "pending" as const,
+            behavioral_contract: slice.behavioral_contract || null,
+            code_contract: slice.code_contract || null,
+            modernization_flags: slice.modernization_flags || null,
+            dependencies: slice.dependencies || [],
+            confidence_score: 0,
+            retry_count: 0,
+          }))
+
+          const { error: insertError } = await (supabase as any)
+            .from("vertical_slices")
+            .insert(sliceRows)
+
+          if (insertError) {
+            console.error("Failed to insert slices:", insertError)
+          }
+        }
+
+        await insertThought(
+          projectId,
+          `Project ready! Generated ${slices.length} vertical slice${slices.length !== 1 ? "s" : ""}.`
+        )
+      }
+
+      // Save checkpoint after planning
+      checkpoint = {
+        ...checkpoint,
+        completed_steps: [...checkpoint.completed_steps, "planning"],
+        slices_generated: true,
+      }
+      await saveCheckpoint(projectId, checkpoint)
+    } else {
+      console.log(`[Project Processing] Skipping planning (already done via checkpoint)`)
+      await insertThought(projectId, "Planning step restored from checkpoint.")
+    }
+
+    // Set project status to ready, clear build_job_id
     await (supabase as any)
       .from("projects")
       .update({
-        metadata: {
-          code_analysis: codeAnalysis,
-          behavioral_analysis: behavioralAnalysis,
-          ...(sandboxId ? { daytona_sandbox_id: sandboxId } : {}),
-        },
+        status: "ready" as const,
+        build_job_id: null,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", projectId)
-
-    // Fetch updated project for Gemini planner
-    type Project = Database["public"]["Tables"]["projects"]["Row"]
-    const { data: updatedProject } = await (supabase as any)
-      .from("projects")
-      .select("*")
-      .eq("id", projectId)
-      .single() as { data: Project | null }
-
-    if (updatedProject) {
-      const slices = await generateSlices(updatedProject)
-      await job.updateProgress(90)
-
-      // Insert slices into vertical_slices table
-      if (slices.length > 0) {
-        const sliceRows = slices.map((slice, index) => ({
-          project_id: projectId,
-          name: slice.name,
-          description: slice.description || null,
-          priority: slice.priority ?? index + 1,
-          status: "pending" as const,
-          behavioral_contract: slice.behavioral_contract || null,
-          code_contract: slice.code_contract || null,
-          modernization_flags: slice.modernization_flags || null,
-          dependencies: slice.dependencies || [],
-          confidence_score: 0,
-          retry_count: 0,
-        }))
-
-        const { error: insertError } = await (supabase as any)
-          .from("vertical_slices")
-          .insert(sliceRows)
-
-        if (insertError) {
-          console.error("Failed to insert slices:", insertError)
-        }
-      }
-
-      await insertThought(
-        projectId,
-        `Project ready! Generated ${slices.length} vertical slice${slices.length !== 1 ? "s" : ""}.`
-      )
-    }
-
-    // Set project status to ready
-    await (supabase as any)
-      .from("projects")
-      .update({ status: "ready" as const, updated_at: new Date().toISOString() })
       .eq("id", projectId)
 
     await job.updateProgress(100)
@@ -363,11 +489,21 @@ async function processProjectJob(
   } catch (error: unknown) {
     console.error(`[Project Processing] Failed for project ${projectId}:`, error)
 
+    // Set error context with step info if not already set
+    const currentStep = checkpoint.completed_steps[checkpoint.completed_steps.length - 1] ?? "init"
+    await setErrorContext(projectId, {
+      step: currentStep,
+      message: error instanceof Error ? error.message : "Unknown error",
+      timestamp: new Date().toISOString(),
+      retryable: true,
+      stack: error instanceof Error ? error.stack : undefined,
+    })
+
     // Reset project status on failure
     await (supabase as any)
       .from("projects")
       .update({
-        status: "pending" as const,
+        status: "failed" as const,
         updated_at: new Date().toISOString(),
       })
       .eq("id", projectId)
@@ -416,13 +552,14 @@ export function startWorkers(): void {
   })
   workers.push(webhooksWorker)
 
-  // Project processing worker
+  // Project processing worker: concurrency 1 to avoid OOM when multiple jobs run
+  // pnpm install (code-synapse + user repo) in Daytona sandboxes is memory-heavy; exit 137 = killed (OOM)
   const projectProcessingWorker = new Worker(
     QUEUE_NAMES.PROJECT_PROCESSING,
     processProjectJob,
     {
       connection: createRedisConnection() as any,
-      concurrency: 1, // One project at a time
+      concurrency: 1,
     }
   )
   workers.push(projectProcessingWorker)

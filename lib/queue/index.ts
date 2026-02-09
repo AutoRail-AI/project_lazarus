@@ -7,10 +7,12 @@ export {
   getProcessingQueue,
   getWebhooksQueue,
   getProjectProcessingQueue,
+  getSliceBuildQueue,
   queueEmail,
   queueProcessing,
   queueWebhook,
   queueProjectProcessing,
+  queueSliceBuild,
   closeAllQueues,
 } from "./queues"
 
@@ -24,6 +26,7 @@ export {
   type EmailJobData,
   type ProcessingJobData,
   type ProjectProcessingJobData,
+  type SliceBuildJobData,
   type WebhookJobData,
   type JobData,
   type JobResult,

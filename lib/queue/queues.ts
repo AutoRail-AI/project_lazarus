@@ -5,6 +5,7 @@ import {
   type ProcessingJobData,
   type ProjectProcessingJobData,
   QUEUE_NAMES,
+  type SliceBuildJobData,
   type WebhookJobData,
 } from "./types"
 
@@ -32,6 +33,7 @@ let emailQueue: Queue<EmailJobData> | null = null
 let processingQueue: Queue<ProcessingJobData> | null = null
 let webhooksQueue: Queue<WebhookJobData> | null = null
 let projectProcessingQueue: Queue<ProjectProcessingJobData> | null = null
+let sliceBuildQueue: Queue<SliceBuildJobData> | null = null
 
 /**
  * Get or create the email queue
@@ -163,13 +165,43 @@ export async function queueProjectProcessing(
 }
 
 /**
+ * Get or create the slice build queue
+ * Orchestrator manages retries, so BullMQ attempts = 1
+ */
+export function getSliceBuildQueue(): Queue<SliceBuildJobData> {
+  if (!sliceBuildQueue) {
+    sliceBuildQueue = new Queue(QUEUE_NAMES.SLICE_BUILD, {
+      connection: getRedis() as any,
+      ...defaultQueueOptions,
+      defaultJobOptions: {
+        ...defaultQueueOptions.defaultJobOptions,
+        attempts: 1, // Orchestrator manages retries
+      },
+    }) as Queue<SliceBuildJobData>
+  }
+  return sliceBuildQueue
+}
+
+/**
+ * Add a slice build job to the queue
+ * Uses deterministic job ID so duplicate queuing is idempotent
+ */
+export async function queueSliceBuild(data: SliceBuildJobData) {
+  const queue = getSliceBuildQueue()
+  return queue.add("build-slice", data, {
+    jobId: `slice-build-${data.sliceId}`,
+  })
+}
+
+/**
  * Close all queue connections gracefully
  */
 export async function closeAllQueues(): Promise<void> {
-  const queues = [emailQueue, processingQueue, webhooksQueue, projectProcessingQueue].filter(Boolean)
+  const queues = [emailQueue, processingQueue, webhooksQueue, projectProcessingQueue, sliceBuildQueue].filter(Boolean)
   await Promise.all(queues.map((q) => q?.close()))
   emailQueue = null
   processingQueue = null
   webhooksQueue = null
   projectProcessingQueue = null
+  sliceBuildQueue = null
 }

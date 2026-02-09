@@ -5,7 +5,7 @@ services:
   # Next.js Application
   app:
     build: .
-    container_name: modern-boilerplate-app
+    container_name: lazarus-app
     ports:
       - "3000:3000"
     volumes:
@@ -27,7 +27,7 @@ services:
   # Background Job Worker
   worker:
     build: .
-    container_name: modern-boilerplate-worker
+    container_name: lazarus-worker
     command: pnpm worker
     volumes:
       - .:/app
@@ -44,7 +44,7 @@ services:
   # Redis for job queues
   redis:
     image: redis:7-alpine
-    container_name: modern-boilerplate-redis
+    container_name: lazarus-redis
     ports:
       - "6379:6379"
     volumes:
@@ -57,11 +57,49 @@ services:
       timeout: 5s
       retries: 5
 
+  # OpenHands Agent Service (uses Gemini via LiteLLM)
+  openhands:
+    image: ghcr.io/all-hands-ai/openhands:latest
+    container_name: lazarus-openhands
+    ports:
+      - "3001:3000"
+    volumes:
+      - openhands_workspace:/workspace
+    environment:
+      # LLM Configuration — OpenHands uses LiteLLM internally
+      - LLM_MODEL=gemini/gemini-2.0-flash
+      - LLM_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      # MCP Tool endpoints
+      - LEFT_BRAIN_API_URL=http://app:3000/api/mcp/left-brain
+      - RIGHT_BRAIN_API_URL=http://app:3000/api/mcp/right-brain
+      # Callback URL for event reporting
+      - CALLBACK_BASE_URL=http://app:3000
+    env_file:
+      - .env.local
+    depends_on:
+      - app
+    restart: unless-stopped
+
+  # noVNC - Browser streaming for live view
+  novnc:
+    image: theasp/novnc:latest
+    container_name: lazarus-novnc
+    ports:
+      - "6080:8080"
+    environment:
+      - DISPLAY_WIDTH=1280
+      - DISPLAY_HEIGHT=720
+      - RUN_XTERM=no
+    depends_on:
+      - openhands
+    restart: unless-stopped
+
   # Redis Commander (optional - for debugging)
   # Uncomment to enable web-based Redis UI at http://localhost:8081
   # redis-commander:
   #   image: rediscommander/redis-commander:latest
-  #   container_name: modern-boilerplate-redis-commander
+  #   container_name: lazarus-redis-commander
   #   environment:
   #     - REDIS_HOSTS=local:redis:6379
   #   ports:
@@ -72,3 +110,4 @@ services:
 
 volumes:
   redis_data:
+  openhands_workspace:

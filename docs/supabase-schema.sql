@@ -14,11 +14,16 @@ CREATE TABLE projects (
   description TEXT,
   github_url TEXT,
   target_framework TEXT,
-  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'ready', 'building', 'complete')),
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'ready', 'building', 'complete', 'failed', 'paused')),
   left_brain_status TEXT,
   right_brain_status TEXT,
   confidence_score FLOAT DEFAULT 0,
   metadata JSONB,
+  pipeline_step TEXT,                -- Current step in the pipeline (left_brain, right_brain, planning, slice:<id>)
+  pipeline_checkpoint JSONB DEFAULT '{}', -- Checkpoint state for resume (completed_steps, cached results)
+  error_context JSONB,               -- Structured error info (step, message, retryable, stack)
+  current_slice_id UUID REFERENCES vertical_slices(id) ON DELETE SET NULL, -- Currently building slice
+  build_job_id TEXT,                  -- BullMQ job ID for cancellation
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -241,6 +246,7 @@ CREATE TABLE templates (
 -- Indexes
 CREATE INDEX idx_projects_user ON projects(user_id);
 CREATE INDEX idx_projects_org ON projects(org_id);
+CREATE INDEX idx_projects_current_slice ON projects(current_slice_id);
 CREATE INDEX idx_project_assets_project ON project_assets(project_id);
 CREATE INDEX idx_slices_project ON vertical_slices(project_id);
 CREATE INDEX idx_agent_events_project ON agent_events(project_id);

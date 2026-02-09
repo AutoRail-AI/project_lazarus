@@ -4,6 +4,7 @@
  *
  * This script runs the BullMQ workers to process background jobs.
  * Run this as a separate process alongside your Next.js app.
+ * Loads .env.local so GEMINI_API_KEY and other vars are available.
  *
  * Usage:
  *   pnpm worker          # Start workers
@@ -12,6 +13,8 @@
  * In production, run this as a separate service/container.
  */
 
+import "./load-env"
+import { cleanupDemoProcesses } from "../lib/demo"
 import { closeRedis, startWorkers, stopWorkers } from "../lib/queue"
 
 console.log("Starting background job worker...")
@@ -22,6 +25,7 @@ startWorkers()
 // Graceful shutdown
 const shutdown = async () => {
   console.log("\nShutting down workers...")
+  cleanupDemoProcesses()
   await stopWorkers()
   await closeRedis()
   console.log("Workers shut down successfully")

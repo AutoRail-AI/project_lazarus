@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { auth } from "@/lib/auth"
 import { supabase } from "@/lib/db"
+import { logger } from "@/lib/utils/logger"
 
 const uploadSchema = z.object({
   fileName: z.string().min(1),
@@ -14,13 +15,14 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id: projectId } = await params
+  logger.info("[API] POST /api/projects/[id]/upload - request start", { projectId })
   try {
     const session = await auth.api.getSession({ headers: await headers() })
     if (!session) {
+      logger.warn("[API] POST /api/projects/[id]/upload - unauthorized")
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
-
-    const { id: projectId } = await params
 
     // Verify project ownership
     const { data: project, error: projectError } = await (supabase as any)
@@ -31,12 +33,20 @@ export async function POST(
       .single()
 
     if (projectError || !project) {
+      logger.warn("[API] POST /api/projects/[id]/upload - project not found", {
+        projectId,
+        pgMessage: projectError?.message,
+      })
       return NextResponse.json({ error: "Project not found" }, { status: 404 })
     }
 
     const body = (await req.json()) as Record<string, unknown>
     const parsed = uploadSchema.safeParse(body)
     if (!parsed.success) {
+      logger.warn("[API] POST /api/projects/[id]/upload - validation failed", {
+        projectId,
+        issues: parsed.error.issues.map((i) => ({ path: i.path })),
+      })
       return NextResponse.json(
         { error: "Validation failed", details: parsed.error.flatten() },
         { status: 400 }
@@ -46,6 +56,12 @@ export async function POST(
     const { fileName, fileType, contentType } = parsed.data
     const bucket = fileType === "video" ? "project-videos" : "project-documents"
     const storagePath = `${projectId}/${Date.now()}-${fileName}`
+    logger.info("[API] POST /api/projects/[id]/upload - generating presigned URL", {
+      projectId,
+      fileType,
+      fileName,
+      bucket,
+    })
 
     // Generate presigned upload URL
     const { data: uploadData, error: uploadError } = await supabase.storage
@@ -53,6 +69,11 @@ export async function POST(
       .createSignedUploadUrl(storagePath)
 
     if (uploadError || !uploadData) {
+      logger.error("[API] POST /api/projects/[id]/upload - presigned URL failed", uploadError, {
+        projectId,
+        bucket,
+        pgMessage: uploadError?.message,
+      })
       return NextResponse.json(
         { error: uploadError?.message || "Failed to generate upload URL" },
         { status: 500 }
@@ -75,15 +96,26 @@ export async function POST(
       .single()
 
     if (assetError) {
+      logger.error("[API] POST /api/projects/[id]/upload - project_assets insert failed", assetError, {
+        projectId,
+        table: "project_assets",
+        pgMessage: assetError.message,
+      })
       return NextResponse.json({ error: assetError.message }, { status: 500 })
     }
 
+    logger.info("[API] POST /api/projects/[id]/upload - success", {
+      projectId,
+      assetId: asset?.id,
+      fileType,
+    })
     return NextResponse.json({
       uploadUrl: uploadData.signedUrl,
       token: uploadData.token,
       asset,
     })
   } catch (error: unknown) {
+    logger.error("[API] POST /api/projects/[id]/upload - unexpected error", error, { projectId })
     const message = error instanceof Error ? error.message : "Internal server error"
     return NextResponse.json({ error: message }, { status: 500 })
   }

@@ -3,17 +3,17 @@ import { env } from "@/env.mjs"
 
 export async function POST(req: NextRequest) {
   try {
-    const mcpUrl = env.RIGHT_BRAIN_MCP_URL
-    if (!mcpUrl) {
+    const apiUrl = env.RIGHT_BRAIN_API_URL
+    if (!apiUrl) {
       return NextResponse.json(
-        { error: "RIGHT_BRAIN_MCP_URL is not configured" },
+        { error: "RIGHT_BRAIN_API_URL is not configured" },
         { status: 503 }
       )
     }
 
     const body = await req.text()
 
-    const response = await fetch(mcpUrl, {
+    const response = await fetch(apiUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body,

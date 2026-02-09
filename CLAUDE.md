@@ -85,12 +85,17 @@ components/
 
 lib/
 ├── auth/               # Better Auth configuration
-├── db/                 # MongoDB connection and utilities
+├── db/                 # Supabase connection and utilities
+├── pipeline/           # Pipeline lifecycle (checkpoint/resume/orchestration)
+│   ├── types.ts        # PipelineStep, PipelineCheckpoint, ErrorContext
+│   ├── orchestrator.ts # Checkpoint CRUD, error context, resume logic
+│   ├── slice-builder.ts# Event-driven slice build orchestration
+│   └── index.ts        # Barrel export
 ├── queue/              # BullMQ job queue system
 │   ├── redis.ts        # Redis connection singleton
 │   ├── types.ts        # Job type definitions
 │   ├── queues.ts       # Queue definitions and helpers
-│   ├── workers.ts      # Worker processors
+│   ├── workers.ts      # Worker processors (with checkpoint support)
 │   └── index.ts        # Barrel export
 ├── types/              # TypeScript type definitions
 ├── uploadthing/        # Uploadthing configuration
@@ -315,6 +320,15 @@ docker compose up
 | `GET /api/health` | Health check endpoint |
 | `/api/auth/*` | Better Auth endpoints |
 | `/api/uploadthing` | File upload endpoint |
+| `GET/POST /api/projects` | List projects / Create project |
+| `GET/PATCH/DELETE /api/projects/[id]` | Get/update/delete project (PATCH pause cancels BullMQ job) |
+| `POST /api/projects/[id]/process` | Start project processing pipeline |
+| `POST /api/projects/[id]/retry` | Smart retry (`?mode=resume\|restart\|auto`) |
+| `POST /api/projects/[id]/resume` | Resume from checkpoint |
+| `POST /api/projects/[id]/build` | Start automated build pipeline for all slices |
+| `GET/POST /api/projects/[id]/events` | Get/insert agent events (POST triggers status transitions) |
+| `POST /api/projects/[id]/slices/[sliceId]/build` | Build a single slice |
+| `POST /api/projects/[id]/slices/[sliceId]/retry` | Retry a failed slice |
 
 ## Environment Variables
 

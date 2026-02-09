@@ -18,23 +18,43 @@
 4. [Phase 3: Vertical Slice Architecture & Plan View](#phase-3) *(Part 2)*
 5. [Phase 4: Glass Brain Dashboard](#phase-4) *(Part 2)*
 6. [Phase 5: OpenHands SDK Integration](#phase-5) *(Part 3)*
+6b. [Phase 5B: Autonomous Browser Testing & Live View](#phase-5b) *(Part 3)*
 7. [Phase 6: Gemini Integration](#phase-6) *(Part 3)*
 8. [Phase 7: Testing Strategy](#phase-7) *(Part 3)*
 9. [Phase 8: Landing Page & Demo Mode](#phase-8) *(Part 3)*
-10. [Phase 9: Dependencies & Enhancements](#phase-9)
+10. [Pipeline Lifecycle: Checkpoint/Resume System](#pipeline-lifecycle) *(Part 3)*
+11. [Phase 9: Dependencies & Enhancements](#phase-9)
 
 ---
 
-## Phase Status Summary (0, 1, 6, 9)
+## Phase Status Summary (0, 1, 2, 3, 4, 5, 6, 9)
 
 | Phase | Status | Verification |
 |-------|--------|--------------|
 | **Phase 0** | ✅ Complete | [Verification Checklist](#verification-checklist-phase-0--9) (below) |
 | **Phase 1** | ✅ Complete | [IMPLEMENTATION_PART2.md - Phase 1 Verification](#phase-1-verification-checklist) |
+| **Phase 2** | ✅ Complete | [IMPLEMENTATION_PART2.md - Phase 2 Verification](#phase-2-verification-checklist) |
+| **Phase 3** | ✅ Complete | [IMPLEMENTATION_PART2.md - Phase 3 Verification](#phase-3-verification-checklist) |
+| **Phase 4** | ✅ Complete | [IMPLEMENTATION_PART2.md - Phase 4 Verification](#phase-4-verification-checklist) |
+| **Phase 5** | ✅ Complete | [IMPLEMENTATION_PART3.md - Phase 5 Verification](#phase-5-verification-checklist) |
+| **Phase 5B** | ✅ Complete | [IMPLEMENTATION_PART3.md - Phase 5B Verification](#phase-5b-verification-checklist) |
 | **Phase 6** | ✅ Complete | [IMPLEMENTATION_PART3.md - Phase 6 Verification](#phase-6-verification-checklist) |
+| **Pipeline Lifecycle** | ✅ Complete | [IMPLEMENTATION_PART3.md - Pipeline Lifecycle Verification](#pipeline-lifecycle-verification-checklist) |
 | **Phase 9** | ✅ Complete | [Verification Checklist](#verification-checklist-phase-0--9) (below) |
 
 **Phase 1 enhancements implemented:** Logo component in sidebar, Neural Activity Pulse (electric-cyan dot when projects have active builds), Magic UI-style grid background on sidebar.
+
+**Phase 2 enhancements implemented:** Project detail actions (Stop processing, Delete project), DELETE API, structured API logging, Redis unavailability handling, Supabase migration for projects tables, optional GitHub URL/files with "at least one required" validation, Next.js-only framework selection (others "Coming soon"), upgraded project creation wizard UI/UX.
+
+**Phase 3 upgraded to Plan Command Center:** Transformed the basic plan page into a full command center with animated stats bar, search/filter toolbar, collapsible sidebar, topological dependency graph layout, confidence rings, interactive detail sheet with tabs (Overview/Contracts/Dependencies), dependency chain highlighting on hover, MiniMap, view toggle (graph/list), and "Build Next" / "Build This Slice" actions.
+
+**Phase 4 upgraded to Demo-Worthy Glass Brain:** 8 new files + 3 modified on top of the base 6-file Glass Brain. Added: `derive-stats.ts` (pure utility), `header-stats.tsx` (rich header with live counters + agent status pulse), `confidence-sparkline.tsx` (SVG trajectory), `plan-pane-enhanced.tsx` (mini-cards + spotlight + progress bar + view toggle), `work-pane-enhanced.tsx` (slice context headers + test cards + timestamps), `activity-timeline.tsx` (event density strip), `victory-lap.tsx` (celebration overlay at 85%), `ambient-effects.tsx` (breathing glow + pane connection lines). Enhanced `confidence-gauge.tsx` with sparkline/milestones/tooltip, enhanced boot sequence (+600ms, staggered pane reveal), new CSS animations.
+
+**Phase 5B implemented:** Autonomous Browser Testing & Live View. 3 new event types (`browser_action`, `screenshot`, `app_start`), noVNC Docker service for live browser streaming, tabbed Work Pane (Events | Browser | Screenshots), screenshot gallery with lightbox, test credential seeding API, and narrative/pipeline/sound integration for all new event types.
+
+**Phase 5 implemented:** OpenHands SDK integration (Marathon Agent Track). Most of Phase 5.1 (queue system) was already complete from Phase 2. Added: Docker Compose update (containers renamed to `lazarus-*`, OpenHands service with `ghcr.io/all-hands-ai/openhands:latest`, `openhands_workspace` volume), worker concurrency increased to 2, `.env.example` updated with OpenHands/MCP/Demo vars. The slice build route (`/api/projects/[id]/slices/[sliceId]/build`) was already implemented in Phase 2. Phases 5.2-5.4 are architectural specs (self-healing loop runs in OpenHands agent system prompt).
+
+**Pipeline Lifecycle implemented:** Checkpoint/Resume system for the project processing pipeline. 1 SQL migration (5 new columns on projects: `pipeline_step`, `pipeline_checkpoint` JSONB, `error_context` JSONB, `current_slice_id`, `build_job_id`), `'paused'` status added. 3 new library files (`lib/pipeline/`): orchestrator (checkpoint CRUD, error context), slice-builder (event-driven slice orchestration), types (PipelineStep, PipelineCheckpoint, ErrorContext). 3 new API routes: `/resume` (checkpoint resume), `/build` (automated build pipeline), `/slices/[sliceId]/retry` (single slice retry). 10 modified files: worker refactored with checkpoint load/save/skip and pause checks, events route with event→status transitions (test_run→testing, test_result→complete/failed, self_heal→self_healing), smart retry with `?mode=resume|restart|auto`, PATCH stop cancels BullMQ job and uses "paused" status, frontend Resume/Build All/Pause buttons, error context card on project detail, "Retry This Slice" in slice detail sheet.
 
 ---
 
@@ -51,6 +71,8 @@ Phase 0 (MUST BE FIRST - blocks everything)
        │    └── Phase 3 (Slice Architecture)
        │         └── Phase 4 (Glass Brain Dashboard)
        │              └── Phase 5 (OpenHands)
+       │                   └── Phase 5B (Browser Testing & Live View)
+       │                        └── Pipeline Lifecycle (Checkpoint/Resume)
        ├── Phase 7 (Testing)
        └── Phase 8 (Landing/Demo)
 ```
@@ -200,7 +222,7 @@ export function getSupabaseBrowserClient():
 
 | Type | Values |
 |------|--------|
-| `ProjectStatus` | `pending`, `processing`, `ready`, `building`, `complete` |
+| `ProjectStatus` | `pending`, `processing`, `ready`, `building`, `complete`, `failed`, `paused` |
 | `AssetType` | `video`, `document`, `repo`, `screenshot` |
 | `SliceStatus` | `pending`, `selected`, `building`, `testing`, `self_healing`, `complete`, `failed` |
 | `AgentEventType` | `thought`, `tool_call`, `observation`, `code_write`, `test_run`, `test_result`, `self_heal`, `confidence_update` |
@@ -213,7 +235,7 @@ Define a `Database` interface with `public.Tables` containing:
 
 | Table | Row fields | Notes |
 |-------|-----------|-------|
-| `projects` | id, org_id, user_id, name, description, github_url, target_framework, status, left_brain_status, right_brain_status, confidence_score, metadata (JSONB), created_at, updated_at | Core entity |
+| `projects` | id, org_id, user_id, name, description, github_url, target_framework, status, left_brain_status, right_brain_status, confidence_score, metadata (JSONB), pipeline_step, pipeline_checkpoint (JSONB), error_context (JSONB), current_slice_id (FK), build_job_id, created_at, updated_at | Core entity |
 | `project_assets` | id, project_id (FK), type, name, storage_path, url, processing_status, metadata, created_at | Uploaded files |
 | `vertical_slices` | id, project_id (FK), name, description, priority, status, behavioral_contract (JSONB), code_contract (JSONB), modernization_flags (JSONB), dependencies (UUID[]), test_results (JSONB), confidence_score, retry_count, created_at, updated_at | Feature slices |
 | `agent_events` | id, project_id (FK), slice_id (FK nullable), event_type, content, metadata (JSONB), confidence_delta, created_at | Real-time event stream |

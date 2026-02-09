@@ -6,10 +6,10 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[]
 
-export type ProjectStatus = 'pending' | 'processing' | 'ready' | 'building' | 'complete'
+export type ProjectStatus = 'pending' | 'processing' | 'analyzed' | 'ready' | 'building' | 'complete' | 'failed' | 'paused'
 export type AssetType = 'video' | 'document' | 'repo' | 'screenshot'
 export type SliceStatus = 'pending' | 'selected' | 'building' | 'testing' | 'self_healing' | 'complete' | 'failed'
-export type AgentEventType = 'thought' | 'tool_call' | 'observation' | 'code_write' | 'test_run' | 'test_result' | 'self_heal' | 'confidence_update'
+export type AgentEventType = 'thought' | 'tool_call' | 'observation' | 'code_write' | 'test_run' | 'test_result' | 'self_heal' | 'confidence_update' | 'browser_action' | 'screenshot' | 'app_start'
 export type SubscriptionStatus = 'active' | 'canceled' | 'past_due' | 'trialing' | 'incomplete'
 export type PlanId = 'free' | 'pro' | 'enterprise'
 export type WebhookEvent = 'user.created' | 'user.updated' | 'organization.created' | 'organization.updated' | 'subscription.created' | 'subscription.updated' | 'subscription.cancelled' | 'payment.succeeded' | 'payment.failed'
@@ -33,6 +33,11 @@ export interface Database {
           right_brain_status: string | null
           confidence_score: number
           metadata: Json | null
+          pipeline_step: string | null
+          pipeline_checkpoint: Json | null
+          error_context: Json | null
+          current_slice_id: string | null
+          build_job_id: string | null
           created_at: string
           updated_at: string
         }
@@ -49,6 +54,11 @@ export interface Database {
           right_brain_status?: string | null
           confidence_score?: number
           metadata?: Json | null
+          pipeline_step?: string | null
+          pipeline_checkpoint?: Json | null
+          error_context?: Json | null
+          current_slice_id?: string | null
+          build_job_id?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -65,6 +75,11 @@ export interface Database {
           right_brain_status?: string | null
           confidence_score?: number
           metadata?: Json | null
+          pipeline_step?: string | null
+          pipeline_checkpoint?: Json | null
+          error_context?: Json | null
+          current_slice_id?: string | null
+          build_job_id?: string | null
           created_at?: string
           updated_at?: string
         }

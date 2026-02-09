@@ -1,0 +1,1007 @@
+{
+  "meta": {
+    "title": "POS System Modernization Analysis",
+    "version": "1.0.0",
+    "source_application": "CodeCrood POS V 0.1",
+    "source_technology": "Java Swing (Desktop)",
+    "target_technology": "Next.js 14+ (App Router)",
+    "analysis_date": "2026-02-09",
+    "source_video": "POS-Demo.mp4",
+    "source_video_duration_seconds": 101.6,
+    "source_video_resolution": "1920x1080",
+    "total_frames_extracted": 102,
+    "key_frames_selected": 14,
+    "frames_directory": "frames/"
+  },
+
+  "frames_manifest": [
+    {
+      "id": "frame_login",
+      "file": "frames/01_login_screen.png",
+      "source_frame": "frame_0001.png",
+      "timestamp_seconds": 1,
+      "screen": "login",
+      "description": "Login dialog over macOS desktop. Red branded header with 'POS / CodeCrood'. Username field pre-filled with 'admin', password masked. Single 'Login' button."
+    },
+    {
+      "id": "frame_customers_list",
+      "file": "frames/02_customers_list.png",
+      "source_frame": "frame_0005.png",
+      "timestamp_seconds": 5,
+      "screen": "customers",
+      "description": "Customer Information screen. Full data table with columns Id, Name, Phone No. Red header row. 22+ customer records visible. Bottom bar has Add, Delete, Update buttons and 'Search by Name' field."
+    },
+    {
+      "id": "frame_customers_inline_edit",
+      "file": "frames/03_customers_inline_edit.png",
+      "source_frame": "frame_0010.png",
+      "timestamp_seconds": 10,
+      "screen": "customers",
+      "description": "Customer row selected (Id: 10). Row highlighted in red. Name cell shows 'fawad' in an editable text field. Demonstrates inline editing capability."
+    },
+    {
+      "id": "frame_customers_add_dialog",
+      "file": "frames/04_customers_add_dialog.png",
+      "source_frame": "frame_0015.png",
+      "timestamp_seconds": 15,
+      "screen": "customers",
+      "description": "OS-native macOS dialog for adding a new customer. Two fields: Name and Phone Number. Ok and Cancel buttons. Background table is grayed out with modal overlay."
+    },
+    {
+      "id": "frame_suppliers_list",
+      "file": "frames/05_suppliers_list.png",
+      "source_frame": "frame_0025.png",
+      "timestamp_seconds": 25,
+      "screen": "suppliers",
+      "description": "Supplier Information screen. Top-bar inline form with Search Id (value: 4), Name (value: baby), Phone No (value: 222-3). Buttons: Save, Delete, Search, Update, Clear. Data table shows 8 suppliers. Row 4 (baby) is selected/highlighted."
+    },
+    {
+      "id": "frame_employees_list",
+      "file": "frames/06_employees_list.png",
+      "source_frame": "frame_0035.png",
+      "timestamp_seconds": 35,
+      "screen": "employees",
+      "description": "Employee Information screen. Same layout pattern as Suppliers. Top-bar form with Search Id (2), Name (andy gray), Phone No (978-45). Same button set. Only 3 employees: emp test, andy gray, chelcy. Row 2 selected with inline edit showing."
+    },
+    {
+      "id": "frame_products_list",
+      "file": "frames/07_products_list.png",
+      "source_frame": "frame_0045.png",
+      "timestamp_seconds": 45,
+      "screen": "products",
+      "description": "Product Information screen. Extended form: Name, Barcode, Stock, Supplier (dropdown: 'sup test'), Price, Quantity Type (dropdown: 'counted'), Category (dropdown: 'grocery'). Icon buttons: Add, Update, Delete, Clear. 'Search by name' field. Table columns: Id, Name, Bar Code, Price, Stock. Two products: xyz (price: 12.0, stock: 123.0) and oil (price: 260.0, stock: 12.0)."
+    },
+    {
+      "id": "frame_categories_list",
+      "file": "frames/08_categories_list.png",
+      "source_frame": "frame_0060.png",
+      "timestamp_seconds": 60,
+      "screen": "categories",
+      "description": "Category Information screen. Minimal form: Name field (value: 'grocery'), Search By Name field. Buttons: Add, Delete, Update, Clear. Table columns: Id, Name. Three categories: grocery, xyz, nw. Row 1 (grocery) selected."
+    },
+    {
+      "id": "frame_pos_sale",
+      "file": "frames/09_pos_sale_screen.png",
+      "source_frame": "frame_0065.png",
+      "timestamp_seconds": 65,
+      "screen": "process_sale",
+      "description": "Process Sale screen initial state. Three-panel layout. LEFT: Product search by name + product list (Name, Price, Stock) showing xyz and oil. CENTER: Sale Items table (Name, Price, Quantity, Total) with one item (oil, qty 1, total 260.0). RIGHT: Paid Amount, Pending Amount fields, Customer search table (fawad, fawad iqbal, saman, sam), Discount field, Total: 260.0, Create Invoice and Pay buttons. BOTTOM: Quantity input (1), 'Add to Cart' button, 'Remove Item' button. BUG: 'jLabel4' and 'jButton4' placeholders visible at bottom."
+    },
+    {
+      "id": "frame_pos_cart_items",
+      "file": "frames/10_pos_cart_items.png",
+      "source_frame": "frame_0075.png",
+      "timestamp_seconds": 75,
+      "screen": "process_sale",
+      "description": "Process Sale with multiple cart items. Sale Items shows two separate rows for 'oil': qty 5 (total 260.0) and qty 1 (total 260.0). Total: 520.0. BUG: Duplicate product not merged into single line item. Same jLabel4/jButton4 bugs visible."
+    },
+    {
+      "id": "frame_pos_customer_select",
+      "file": "frames/11_pos_customer_select.png",
+      "source_frame": "frame_0080.png",
+      "timestamp_seconds": 80,
+      "screen": "process_sale",
+      "description": "Process Sale with customer selection. User has clicked on 'fawad' in the customer mini-table (right panel). Customer search area shows 4 customers with Name and Phone No columns. Total remains 520.0."
+    },
+    {
+      "id": "frame_invoice_dialog",
+      "file": "frames/12_invoice_text_dialog.png",
+      "source_frame": "frame_0090.png",
+      "timestamp_seconds": 90,
+      "screen": "process_sale",
+      "description": "Invoice generated as OS-native dialog with plain ASCII text. Shows: 'INVOICE' header in ASCII art borders, Invoice Number: INV-8881, Date: 2026-02-09 12:09:03, Customer: fawad iqbal. Line items table: oil qty 5 @ 260.0 = 1300.0, oil qty 1 @ 260.0 = 260.0. Total: 520.0. BUG: Total shows 520.0 but line items sum to 1560.0 (possible calculation error or display bug). OK button to dismiss."
+    },
+    {
+      "id": "frame_invoice_placeholder",
+      "file": "frames/13_invoice_panel_placeholder.png",
+      "source_frame": "frame_0095.png",
+      "timestamp_seconds": 95,
+      "screen": "invoice_panel",
+      "description": "Invoice Panel screen - COMPLETELY UNIMPLEMENTED. Shows only the text 'InvoicePanel' in large black font on empty beige background. No tables, no data, no functionality. Sidebar navigation is visible."
+    },
+    {
+      "id": "frame_reports_placeholder",
+      "file": "frames/14_reports_panel_placeholder.png",
+      "source_frame": "frame_0100.png",
+      "timestamp_seconds": 100,
+      "screen": "reports_panel",
+      "description": "Reports Panel screen - COMPLETELY UNIMPLEMENTED. Shows only the text 'ReportsPanel' in large black font on empty beige background. No charts, no data, no filtering. Sidebar navigation is visible."
+    }
+  ],
+
+  "application_structure": {
+    "navigation": {
+      "type": "left_sidebar",
+      "style": "red_background_white_text",
+      "collapsible": false,
+      "items": [
+        { "label": "Customers", "icon": true, "group": "master_data", "screen": "customers" },
+        { "label": "Supplier", "icon": true, "group": "master_data", "screen": "suppliers" },
+        { "label": "Employees", "icon": true, "group": "master_data", "screen": "employees" },
+        { "label": "Products", "icon": true, "group": "master_data", "screen": "products" },
+        { "label": "Category", "icon": true, "group": "master_data", "screen": "categories" },
+        { "label": "Sales", "icon": false, "group": "sales", "screen": "process_sale" },
+        { "label": "Invoice", "icon": true, "group": "sales", "screen": "invoice_panel" },
+        { "label": "Reports", "icon": false, "group": "reporting", "screen": "reports_panel" }
+      ]
+    },
+    "header": {
+      "left": "hamburger_menu + 'Point of Sale' title",
+      "right": "admin username + Logout button + X close button"
+    }
+  },
+
+  "screens": [
+    {
+      "id": "login",
+      "name": "Login Screen",
+      "type": "authentication",
+      "frames": ["frame_login"],
+      "primary_frame": "frame_login",
+      "current_state": {
+        "layout": "modal_dialog_over_desktop",
+        "components": [
+          { "type": "header", "content": "POS / CodeCrood", "style": "red_background_white_text" },
+          { "type": "label", "content": "Login" },
+          { "type": "text_field", "label": "Username", "default_value": "admin" },
+          { "type": "password_field", "label": "Password", "masked": true },
+          { "type": "button", "label": "Login", "style": "red_background" }
+        ],
+        "fields": [
+          { "name": "username", "type": "text", "required": true, "validation": "none" },
+          { "name": "password", "type": "password", "required": true, "validation": "none" }
+        ],
+        "window_title": "Point of Sale System V 0.1 by CodeCrood"
+      },
+      "issues": [
+        { "severity": "critical", "category": "security", "description": "No input validation or error message display on failed login" },
+        { "severity": "critical", "category": "security", "description": "No rate limiting or brute force protection" },
+        { "severity": "critical", "category": "security", "description": "Likely plaintext or weakly hashed credential storage" },
+        { "severity": "high", "category": "security", "description": "No multi-factor authentication option" },
+        { "severity": "high", "category": "feature", "description": "No 'forgot password' or password reset flow" },
+        { "severity": "medium", "category": "ux", "description": "No role indicator or role-based redirect after login" },
+        { "severity": "low", "category": "ux", "description": "No SSO or OAuth integration options" }
+      ],
+      "nextjs_proposal": {
+        "route": "/login",
+        "layout": "public (no sidebar, centered card)",
+        "auth_library": "next-auth v5",
+        "features": [
+          "JWT tokens with httpOnly secure cookies",
+          "Credential provider + optional OAuth (Google, Microsoft)",
+          "Zod schema validation on form submission",
+          "Rate limiting via Next.js middleware (5 attempts / 15 min)",
+          "RBAC: redirect admin to /dashboard, cashier to /pos",
+          "Password hashing with bcrypt (12 rounds)",
+          "Session persistence with Prisma adapter"
+        ],
+        "components": ["shadcn/ui Card", "React Hook Form", "Zod resolver", "next-auth SignIn"],
+        "middleware": "middleware.ts for route protection with role-based access control"
+      }
+    },
+
+    {
+      "id": "customers",
+      "name": "Customer Information",
+      "type": "crud_master_data",
+      "frames": ["frame_customers_list", "frame_customers_inline_edit", "frame_customers_add_dialog"],
+      "primary_frame": "frame_customers_list",
+      "current_state": {
+        "layout": "full_width_table_with_bottom_actions",
+        "title": "Customer Information",
+        "crud_pattern": "modal_dialog_for_add",
+        "components": [
+          { "type": "data_table", "columns": ["Id", "Name", "Phone No"], "record_count": 22, "pagination": false, "sorting": false },
+          { "type": "button_bar", "position": "bottom", "buttons": ["Add", "Delete", "Update"] },
+          { "type": "search_field", "label": "Search by Name", "position": "bottom_right" },
+          { "type": "modal_dialog", "trigger": "Add button", "fields": ["Name", "Phone Number"], "buttons": ["Ok", "Cancel"], "style": "os_native" }
+        ],
+        "fields": [
+          { "name": "id", "type": "integer", "auto_increment": true },
+          { "name": "name", "type": "text", "validation": "none" },
+          { "name": "phone_no", "type": "text", "validation": "none" }
+        ],
+        "interactions": [
+          { "action": "click_row", "result": "highlights row in red, populates inline editable cells" },
+          { "action": "click_add", "result": "opens OS-native dialog with Name and Phone Number fields" },
+          { "action": "click_delete", "result": "deletes selected row without confirmation" },
+          { "action": "click_update", "result": "saves inline edits to selected row" }
+        ],
+        "data_observations": [
+          "22+ customer records visible",
+          "Duplicate names present (multiple 'fawad Iqbal' entries)",
+          "Inconsistent phone formats: 12345, 77-88-9, 03149972883, 9999988, 1234567890",
+          "Non-sequential IDs suggest deleted records: 1, 3, 6, 9, 10, 27, 38, 40..."
+        ]
+      },
+      "issues": [
+        { "severity": "high", "category": "performance", "description": "No pagination - all records loaded at once into JTable" },
+        { "severity": "high", "category": "data_quality", "description": "No phone number format validation (mixed formats: 12345, 77-88-9, 03149972883)" },
+        { "severity": "high", "category": "ux", "description": "No confirmation dialog before destructive delete" },
+        { "severity": "medium", "category": "data_model", "description": "Missing fields: email, address, city, notes, created_at" },
+        { "severity": "medium", "category": "data_quality", "description": "Duplicate customer names allowed with no deduplication warning" },
+        { "severity": "medium", "category": "ux", "description": "OS-native dialog looks inconsistent with app theming" },
+        { "severity": "medium", "category": "ux", "description": "Uses different CRUD pattern (modal) than Suppliers/Employees (inline form)" },
+        { "severity": "low", "category": "feature", "description": "No export/import functionality (CSV, Excel)" },
+        { "severity": "low", "category": "feature", "description": "No column sorting capability" },
+        { "severity": "low", "category": "feature", "description": "Search only by name, not by phone or ID" }
+      ],
+      "nextjs_proposal": {
+        "route": "/dashboard/customers",
+        "detail_route": "/dashboard/customers/[id]",
+        "layout": "dashboard (sidebar + header)",
+        "features": [
+          "TanStack Table with server-side pagination (cursor-based)",
+          "Multi-column sorting and filtering",
+          "Debounced search with URL query params (?q=&sort=&page=)",
+          "Slide-over panel (shadcn Sheet) for add/edit - NOT modal dialog",
+          "Confirmation dialog before delete with customer name displayed",
+          "Phone number validation with regex pattern and formatting",
+          "Duplicate detection on save (fuzzy match on name + phone)",
+          "Bulk actions: export CSV, bulk delete with multi-select",
+          "Customer detail page with purchase history tab"
+        ],
+        "schema": {
+          "table": "customers",
+          "fields": [
+            { "name": "id", "type": "uuid", "primary_key": true },
+            { "name": "name", "type": "string", "required": true, "max_length": 255 },
+            { "name": "email", "type": "string", "unique": true, "nullable": true },
+            { "name": "phone", "type": "string", "required": true, "validation": "phone_regex" },
+            { "name": "address", "type": "text", "nullable": true },
+            { "name": "city", "type": "string", "nullable": true },
+            { "name": "state", "type": "string", "nullable": true },
+            { "name": "zip_code", "type": "string", "nullable": true },
+            { "name": "notes", "type": "text", "nullable": true },
+            { "name": "loyalty_points", "type": "integer", "default": 0 },
+            { "name": "is_active", "type": "boolean", "default": true },
+            { "name": "created_at", "type": "datetime", "auto": true },
+            { "name": "updated_at", "type": "datetime", "auto": true }
+          ],
+          "relations": [
+            { "type": "has_many", "target": "invoices", "foreign_key": "customer_id" }
+          ]
+        },
+        "components": ["DataTable (TanStack)", "Sheet (slide-over)", "AlertDialog (delete confirm)", "Form (React Hook Form + Zod)", "Toast (notifications)"]
+      }
+    },
+
+    {
+      "id": "suppliers",
+      "name": "Supplier Information",
+      "type": "crud_master_data",
+      "frames": ["frame_suppliers_list"],
+      "primary_frame": "frame_suppliers_list",
+      "current_state": {
+        "layout": "inline_form_above_table",
+        "title": "Supplier Information",
+        "crud_pattern": "inline_top_form",
+        "components": [
+          { "type": "form_bar", "position": "top", "fields": ["Search Id", "Name", "Phone No"] },
+          { "type": "button_bar", "position": "below_form", "buttons": ["Save", "Delete", "Search", "Update", "Clear"] },
+          { "type": "data_table", "columns": ["Id", "Name", "Phone No"], "record_count": 8, "pagination": false, "sorting": false }
+        ],
+        "fields": [
+          { "name": "id", "type": "integer", "auto_increment": true },
+          { "name": "name", "type": "text", "validation": "none" },
+          { "name": "phone_no", "type": "text", "validation": "none" }
+        ],
+        "interactions": [
+          { "action": "click_row", "result": "populates top form fields with row data" },
+          { "action": "click_save", "result": "creates new record from form fields" },
+          { "action": "click_search", "result": "searches by ID field value" },
+          { "action": "click_clear", "result": "empties all form fields" }
+        ],
+        "data_observations": [
+          "8 supplier records",
+          "Duplicate name: 'mike' appears twice (Id 2 and 6) with same phone",
+          "Inconsistent phone formats: 1100, `456-7854, 789-88, 222-3",
+          "Non-sequential IDs: 1, 2, 3, 4, 6, 7, 9, 10"
+        ]
+      },
+      "issues": [
+        { "severity": "high", "category": "ux", "description": "Different CRUD pattern than Customers screen (inline form vs modal dialog)" },
+        { "severity": "high", "category": "data_quality", "description": "Duplicate supplier allowed (mike appears at Id 2 and 6 with same phone)" },
+        { "severity": "medium", "category": "data_model", "description": "Missing supplier-specific fields: company name, email, address, tax ID, payment terms" },
+        { "severity": "medium", "category": "feature", "description": "No visible association between suppliers and their products" },
+        { "severity": "medium", "category": "data_quality", "description": "Phone format inconsistency including backtick character in '`456-7854'" },
+        { "severity": "low", "category": "feature", "description": "Search only by ID, not by name" }
+      ],
+      "nextjs_proposal": {
+        "route": "/dashboard/suppliers",
+        "detail_route": "/dashboard/suppliers/[id]",
+        "layout": "dashboard (sidebar + header)",
+        "features": [
+          "Consistent layout matching customers screen pattern",
+          "Extended fields: company name, email, address, tax ID, payment terms",
+          "Product-supplier relationship display on detail page",
+          "Unified search across all fields",
+          "Supplier performance metrics (total orders, reliability rating)",
+          "Purchase order history tab on detail page"
+        ],
+        "schema": {
+          "table": "suppliers",
+          "fields": [
+            { "name": "id", "type": "uuid", "primary_key": true },
+            { "name": "name", "type": "string", "required": true },
+            { "name": "company_name", "type": "string", "nullable": true },
+            { "name": "email", "type": "string", "nullable": true },
+            { "name": "phone", "type": "string", "required": true },
+            { "name": "address", "type": "text", "nullable": true },
+            { "name": "tax_id", "type": "string", "nullable": true },
+            { "name": "payment_terms", "type": "string", "nullable": true },
+            { "name": "rating", "type": "decimal", "nullable": true },
+            { "name": "is_active", "type": "boolean", "default": true },
+            { "name": "created_at", "type": "datetime", "auto": true },
+            { "name": "updated_at", "type": "datetime", "auto": true }
+          ],
+          "relations": [
+            { "type": "has_many", "target": "products", "foreign_key": "supplier_id" }
+          ]
+        }
+      }
+    },
+
+    {
+      "id": "employees",
+      "name": "Employee Information",
+      "type": "crud_master_data",
+      "frames": ["frame_employees_list"],
+      "primary_frame": "frame_employees_list",
+      "current_state": {
+        "layout": "inline_form_above_table",
+        "title": "Employee Information",
+        "crud_pattern": "inline_top_form",
+        "components": [
+          { "type": "form_bar", "position": "top", "fields": ["Search Id", "Name", "Phone No"] },
+          { "type": "button_bar", "position": "below_form", "buttons": ["Save", "Delete", "Search", "Update", "Clear"] },
+          { "type": "data_table", "columns": ["Id", "Name", "Phone No"], "record_count": 3, "pagination": false, "sorting": false }
+        ],
+        "fields": [
+          { "name": "id", "type": "integer", "auto_increment": true },
+          { "name": "name", "type": "text", "validation": "none" },
+          { "name": "phone_no", "type": "text", "validation": "none" }
+        ],
+        "data_observations": [
+          "Only 3 employees: emp test (111-222), andy gray (978-45), chelcy (45-56)",
+          "Identical layout to Suppliers screen",
+          "Very minimal data model - no role, department, or hire date"
+        ]
+      },
+      "issues": [
+        { "severity": "high", "category": "data_model", "description": "No role or department information - critical for a POS with multiple access levels" },
+        { "severity": "high", "category": "feature", "description": "No link between employee records and login/authentication accounts" },
+        { "severity": "medium", "category": "data_model", "description": "Missing fields: email, hire date, salary, status, shift schedule" },
+        { "severity": "medium", "category": "feature", "description": "No employee-specific sales tracking or performance view" },
+        { "severity": "low", "category": "data_model", "description": "Very sparse data - suggests early prototype with test data" }
+      ],
+      "nextjs_proposal": {
+        "route": "/dashboard/employees",
+        "detail_route": "/dashboard/employees/[id]",
+        "layout": "dashboard (sidebar + header)",
+        "features": [
+          "Full employee profile with role assignment",
+          "Direct link to auth user account for login permissions",
+          "Role-based POS access configuration (Admin, Manager, Cashier)",
+          "Shift management and scheduling view",
+          "Activity log showing actions performed",
+          "Employee-specific sales performance dashboard on detail page"
+        ],
+        "schema": {
+          "table": "employees",
+          "fields": [
+            { "name": "id", "type": "uuid", "primary_key": true },
+            { "name": "name", "type": "string", "required": true },
+            { "name": "email", "type": "string", "required": true, "unique": true },
+            { "name": "phone", "type": "string", "required": true },
+            { "name": "role", "type": "enum", "values": ["ADMIN", "MANAGER", "CASHIER"], "required": true },
+            { "name": "department", "type": "string", "nullable": true },
+            { "name": "hire_date", "type": "date", "required": true },
+            { "name": "salary", "type": "decimal", "nullable": true },
+            { "name": "user_id", "type": "uuid", "relation": "users", "nullable": true },
+            { "name": "is_active", "type": "boolean", "default": true },
+            { "name": "created_at", "type": "datetime", "auto": true },
+            { "name": "updated_at", "type": "datetime", "auto": true }
+          ],
+          "relations": [
+            { "type": "belongs_to", "target": "users", "foreign_key": "user_id" },
+            { "type": "has_many", "target": "invoices", "foreign_key": "employee_id" }
+          ]
+        }
+      }
+    },
+
+    {
+      "id": "products",
+      "name": "Product Information",
+      "type": "crud_master_data",
+      "frames": ["frame_products_list"],
+      "primary_frame": "frame_products_list",
+      "current_state": {
+        "layout": "extended_form_above_table",
+        "title": "Product Information",
+        "crud_pattern": "icon_buttons_with_search",
+        "components": [
+          { "type": "form_bar", "position": "top", "fields": ["Name", "Barcode", "Stock", "Supplier (dropdown)", "Price", "Quantity Type (dropdown)", "Category (dropdown)"] },
+          { "type": "button_bar", "position": "below_form", "buttons": [
+            { "label": "Add", "icon": "search_icon" },
+            { "label": "Update", "icon": "search_icon" },
+            { "label": "Delete", "icon": "search_icon" },
+            { "label": "Clear", "icon": "search_icon" }
+          ]},
+          { "type": "search_field", "label": "Search by name", "position": "right_of_buttons" },
+          { "type": "data_table", "columns": ["Id", "Name", "Bar Code", "Price", "Stock"], "record_count": 2, "pagination": false, "sorting": false }
+        ],
+        "fields": [
+          { "name": "id", "type": "integer", "auto_increment": true },
+          { "name": "name", "type": "text", "validation": "none" },
+          { "name": "barcode", "type": "text", "validation": "none" },
+          { "name": "stock", "type": "float", "validation": "none" },
+          { "name": "price", "type": "float", "validation": "none" },
+          { "name": "quantity_type", "type": "dropdown", "options": ["counted"], "validation": "none" },
+          { "name": "supplier_id", "type": "dropdown", "source": "suppliers_table", "validation": "none" },
+          { "name": "category_id", "type": "dropdown", "source": "categories_table", "validation": "none" }
+        ],
+        "data_observations": [
+          "Only 2 products: xyz (barcode: 234567, price: 12.0, stock: 123.0) and oil (barcode: 123456, price: 260.0, stock: 12.0)",
+          "Third CRUD pattern: icon buttons different from both Customers and Suppliers",
+          "Supplier and Category are populated from related tables via dropdowns",
+          "Quantity Type dropdown has 'counted' option (likely also 'weighted')"
+        ]
+      },
+      "issues": [
+        { "severity": "high", "category": "ux", "description": "Third different CRUD pattern (icon buttons) - inconsistent with Customers (modal) and Suppliers (plain buttons)" },
+        { "severity": "high", "category": "data_model", "description": "No cost price vs selling price - cannot calculate profit margins" },
+        { "severity": "high", "category": "feature", "description": "No product images or descriptions" },
+        { "severity": "medium", "category": "feature", "description": "No minimum stock level alerts or reorder point configuration" },
+        { "severity": "medium", "category": "feature", "description": "No product variants (size, color, weight)" },
+        { "severity": "medium", "category": "feature", "description": "No barcode scanner integration" },
+        { "severity": "medium", "category": "feature", "description": "No bulk import capability (CSV/Excel)" },
+        { "severity": "low", "category": "data_model", "description": "No SKU field separate from barcode" },
+        { "severity": "low", "category": "feature", "description": "No product image upload" }
+      ],
+      "nextjs_proposal": {
+        "route": "/dashboard/products",
+        "detail_route": "/dashboard/products/[id]",
+        "layout": "dashboard (sidebar + header)",
+        "features": [
+          "Dual view: grid cards with images + data table toggle",
+          "Image upload with drag-and-drop (S3/Cloudinary storage)",
+          "Cost price + selling price + auto margin calculation",
+          "Low stock alerts with configurable reorder point per product",
+          "Product variants (size, color, weight) as sub-records",
+          "Barcode scanning via browser camera (Web Barcode Detection API / quagga2)",
+          "CSV/Excel bulk import with column mapping wizard",
+          "Product history: price changes, stock movements over time"
+        ],
+        "schema": {
+          "table": "products",
+          "fields": [
+            { "name": "id", "type": "uuid", "primary_key": true },
+            { "name": "name", "type": "string", "required": true },
+            { "name": "description", "type": "text", "nullable": true },
+            { "name": "sku", "type": "string", "unique": true },
+            { "name": "barcode", "type": "string", "unique": true, "nullable": true },
+            { "name": "cost_price", "type": "decimal", "required": true },
+            { "name": "selling_price", "type": "decimal", "required": true },
+            { "name": "stock", "type": "decimal", "required": true, "default": 0 },
+            { "name": "min_stock_level", "type": "decimal", "default": 0 },
+            { "name": "quantity_type", "type": "enum", "values": ["COUNTED", "WEIGHTED"], "default": "COUNTED" },
+            { "name": "unit", "type": "string", "nullable": true },
+            { "name": "images", "type": "json", "default": "[]" },
+            { "name": "tax_rate", "type": "decimal", "default": 0 },
+            { "name": "supplier_id", "type": "uuid", "relation": "suppliers" },
+            { "name": "category_id", "type": "uuid", "relation": "categories" },
+            { "name": "is_active", "type": "boolean", "default": true },
+            { "name": "created_at", "type": "datetime", "auto": true },
+            { "name": "updated_at", "type": "datetime", "auto": true }
+          ],
+          "relations": [
+            { "type": "belongs_to", "target": "suppliers", "foreign_key": "supplier_id" },
+            { "type": "belongs_to", "target": "categories", "foreign_key": "category_id" },
+            { "type": "has_many", "target": "invoice_items", "foreign_key": "product_id" },
+            { "type": "has_many", "target": "product_variants", "foreign_key": "product_id" }
+          ]
+        }
+      }
+    },
+
+    {
+      "id": "categories",
+      "name": "Category Information",
+      "type": "crud_master_data",
+      "frames": ["frame_categories_list"],
+      "primary_frame": "frame_categories_list",
+      "current_state": {
+        "layout": "minimal_form_above_table",
+        "title": "Category Information",
+        "crud_pattern": "inline_buttons",
+        "components": [
+          { "type": "form_bar", "position": "top", "fields": ["Name"] },
+          { "type": "search_field", "label": "Search By Name", "position": "right_of_name" },
+          { "type": "button_bar", "position": "below_form", "buttons": ["Add", "Delete", "Update", "Clear"] },
+          { "type": "data_table", "columns": ["Id", "Name"], "record_count": 3, "pagination": false, "sorting": false }
+        ],
+        "fields": [
+          { "name": "id", "type": "integer", "auto_increment": true },
+          { "name": "name", "type": "text", "validation": "none" }
+        ],
+        "data_observations": [
+          "Only 3 categories: grocery, xyz, nw",
+          "Flat list with no hierarchy (no parent/child)",
+          "Generic placeholder names suggest test data"
+        ]
+      },
+      "issues": [
+        { "severity": "medium", "category": "data_model", "description": "No hierarchical category support (parent/child tree structure)" },
+        { "severity": "medium", "category": "data_model", "description": "No category description or image" },
+        { "severity": "low", "category": "feature", "description": "No product count per category displayed" },
+        { "severity": "low", "category": "ux", "description": "No drag-and-drop reordering for display priority" }
+      ],
+      "nextjs_proposal": {
+        "route": "/dashboard/categories",
+        "layout": "dashboard (sidebar + header)",
+        "features": [
+          "Hierarchical category tree with nested parent/child via self-relation",
+          "Category images and descriptions",
+          "Product count badges per category (computed from products table)",
+          "Drag-and-drop tree reordering with dnd-kit",
+          "Category-based filtering integrated into product listing"
+        ],
+        "schema": {
+          "table": "categories",
+          "fields": [
+            { "name": "id", "type": "uuid", "primary_key": true },
+            { "name": "name", "type": "string", "required": true },
+            { "name": "description", "type": "text", "nullable": true },
+            { "name": "image", "type": "string", "nullable": true },
+            { "name": "parent_id", "type": "uuid", "self_relation": true, "nullable": true },
+            { "name": "sort_order", "type": "integer", "default": 0 },
+            { "name": "is_active", "type": "boolean", "default": true },
+            { "name": "created_at", "type": "datetime", "auto": true }
+          ],
+          "relations": [
+            { "type": "self_relation", "target": "categories", "foreign_key": "parent_id", "alias": "parent/children" },
+            { "type": "has_many", "target": "products", "foreign_key": "category_id" }
+          ]
+        }
+      }
+    },
+
+    {
+      "id": "process_sale",
+      "name": "Process Sale (POS Terminal)",
+      "type": "transactional",
+      "frames": ["frame_pos_sale", "frame_pos_cart_items", "frame_pos_customer_select", "frame_invoice_dialog"],
+      "primary_frame": "frame_pos_sale",
+      "current_state": {
+        "layout": "three_panel_with_bottom_bar",
+        "title": "Process Sale",
+        "panels": {
+          "left": {
+            "title": "Product Search",
+            "components": [
+              { "type": "search_field", "label": "Search By Name" },
+              { "type": "data_table", "columns": ["Name", "Price", "Stock"], "description": "Available products list" }
+            ]
+          },
+          "center": {
+            "title": "Sale Items",
+            "components": [
+              { "type": "data_table", "columns": ["Name", "Price", "Quantity", "Total"], "description": "Cart / line items" }
+            ]
+          },
+          "right": {
+            "title": "Payment & Customer",
+            "components": [
+              { "type": "text_field", "label": "Paid Amount" },
+              { "type": "text_field", "label": "Pending Amount" },
+              { "type": "search_field", "label": "Search Customer" },
+              { "type": "data_table", "columns": ["Name", "Phone No"], "description": "Customer selection mini-table" },
+              { "type": "text_field", "label": "Discount" },
+              { "type": "label", "label": "Total", "computed": true },
+              { "type": "button", "label": "create invoice" },
+              { "type": "button", "label": "Pay" }
+            ]
+          },
+          "bottom": {
+            "components": [
+              { "type": "number_field", "label": "Quantity", "default": 1 },
+              { "type": "button", "label": "Add to Cart" },
+              { "type": "button", "label": "Remove Item" },
+              { "type": "label", "label": "jLabel4", "bug": true },
+              { "type": "button", "label": "jButton4", "bug": true }
+            ]
+          }
+        },
+        "invoice_generation": {
+          "format": "plain_ascii_text",
+          "display": "os_native_dialog_with_ok_button",
+          "fields_shown": ["Invoice Number (INV-XXXX)", "Date", "Customer", "Product Name", "Quantity", "Unit Price", "Total Price", "Grand Total"],
+          "example_invoice_number": "INV-8881",
+          "frame": "frame_invoice_dialog"
+        }
+      },
+      "issues": [
+        { "severity": "critical", "category": "bug", "description": "'jLabel4' placeholder text visible at bottom of screen - unfinished development artifact", "frames": ["frame_pos_sale"] },
+        { "severity": "critical", "category": "bug", "description": "'jButton4' placeholder button visible at bottom of screen - unfinished development artifact", "frames": ["frame_pos_sale"] },
+        { "severity": "critical", "category": "bug", "description": "Duplicate line items not merged: adding same product twice creates separate rows instead of incrementing quantity (oil appears as qty 5 + qty 1 instead of qty 6)", "frames": ["frame_pos_cart_items"] },
+        { "severity": "critical", "category": "bug", "description": "Invoice total may be incorrect: line items show 1300.0 + 260.0 = 1560.0 but total displays 520.0", "frames": ["frame_invoice_dialog"] },
+        { "severity": "critical", "category": "feature", "description": "Invoice is plain ASCII text in OS dialog - not printable, not saveable as PDF", "frames": ["frame_invoice_dialog"] },
+        { "severity": "high", "category": "feature", "description": "No tax calculation engine (GST/VAT)" },
+        { "severity": "high", "category": "feature", "description": "No payment method selection (cash, card, UPI)" },
+        { "severity": "high", "category": "feature", "description": "No barcode scanning - products must be searched by name" },
+        { "severity": "high", "category": "feature", "description": "No receipt/thermal printer integration" },
+        { "severity": "medium", "category": "feature", "description": "No hold/recall/park sale functionality" },
+        { "severity": "medium", "category": "feature", "description": "No visible inventory auto-deduction on sale completion" },
+        { "severity": "medium", "category": "ux", "description": "No keyboard shortcuts for fast operation" },
+        { "severity": "low", "category": "ux", "description": "Customer selection via mini-table is cramped in right panel" }
+      ],
+      "nextjs_proposal": {
+        "route": "/pos",
+        "layout": "fullscreen (dedicated POS layout, NO sidebar)",
+        "features": [
+          "Touch-optimized grid layout with large product tiles",
+          "Quick-add category tabs for fast product finding",
+          "Persistent cart sidebar with real-time totals including tax",
+          "Automatic duplicate line item merging",
+          "Tax engine: per-product and per-category GST/VAT rates",
+          "Multi-payment support: split across cash, card, UPI",
+          "Barcode scanning via browser camera API",
+          "Keyboard shortcuts: F2=search, F5=customer, F9=pay, F12=hold",
+          "Hold/recall/park sale with named holds",
+          "Thermal receipt printer via Web USB API or print server",
+          "PDF invoice generation with @react-pdf/renderer",
+          "Real-time stock validation on every add-to-cart",
+          "Real-time stock deduction on sale completion",
+          "Offline mode with IndexedDB for network resilience",
+          "Quick customer creation without leaving POS screen"
+        ],
+        "state_management": "Zustand store for cart state + React Query for server data",
+        "components": ["Product grid tiles", "Cart sidebar", "Payment modal", "Customer search combobox", "Barcode scanner overlay", "Receipt preview"]
+      }
+    },
+
+    {
+      "id": "invoice_panel",
+      "name": "Invoice Panel",
+      "type": "placeholder_unimplemented",
+      "frames": ["frame_invoice_placeholder"],
+      "primary_frame": "frame_invoice_placeholder",
+      "current_state": {
+        "layout": "empty_placeholder",
+        "title": "InvoicePanel",
+        "content": "Single text label 'InvoicePanel' on empty background",
+        "functionality": "NONE - completely unimplemented"
+      },
+      "issues": [
+        { "severity": "critical", "category": "feature", "description": "Completely unimplemented - shows only 'InvoicePanel' placeholder text", "frames": ["frame_invoice_placeholder"] },
+        { "severity": "critical", "category": "feature", "description": "No invoice listing, search, or history functionality" },
+        { "severity": "high", "category": "ux", "description": "Dead navigation link in sidebar leads to empty screen" }
+      ],
+      "nextjs_proposal": {
+        "route": "/dashboard/invoices",
+        "detail_route": "/dashboard/invoices/[id]",
+        "layout": "dashboard (sidebar + header)",
+        "features": [
+          "Full invoice list with status badges (paid, pending, overdue, cancelled)",
+          "Search by invoice number, customer name, date range",
+          "Filter by status, payment method, amount range",
+          "Inline PDF preview on detail page",
+          "Re-print and email invoice capabilities",
+          "Payment tracking: partial payments, remaining balance",
+          "Credit note and refund processing",
+          "Invoice analytics: average value, payment delay trends"
+        ],
+        "schema": {
+          "table": "invoices",
+          "fields": [
+            { "name": "id", "type": "uuid", "primary_key": true },
+            { "name": "invoice_number", "type": "string", "unique": true, "auto_generated": true },
+            { "name": "customer_id", "type": "uuid", "relation": "customers" },
+            { "name": "employee_id", "type": "uuid", "relation": "employees" },
+            { "name": "subtotal", "type": "decimal", "required": true },
+            { "name": "tax_amount", "type": "decimal", "default": 0 },
+            { "name": "discount_amount", "type": "decimal", "default": 0 },
+            { "name": "discount_type", "type": "enum", "values": ["PERCENTAGE", "FIXED"], "default": "FIXED" },
+            { "name": "total", "type": "decimal", "required": true },
+            { "name": "paid_amount", "type": "decimal", "default": 0 },
+            { "name": "pending_amount", "type": "decimal", "computed": "total - paid_amount" },
+            { "name": "status", "type": "enum", "values": ["DRAFT", "PAID", "PARTIALLY_PAID", "PENDING", "OVERDUE", "CANCELLED"], "default": "DRAFT" },
+            { "name": "payment_method", "type": "enum", "values": ["CASH", "CARD", "UPI", "SPLIT"], "nullable": true },
+            { "name": "notes", "type": "text", "nullable": true },
+            { "name": "created_at", "type": "datetime", "auto": true },
+            { "name": "updated_at", "type": "datetime", "auto": true }
+          ],
+          "relations": [
+            { "type": "belongs_to", "target": "customers", "foreign_key": "customer_id" },
+            { "type": "belongs_to", "target": "employees", "foreign_key": "employee_id" },
+            { "type": "has_many", "target": "invoice_items", "foreign_key": "invoice_id" },
+            { "type": "has_many", "target": "payments", "foreign_key": "invoice_id" }
+          ]
+        }
+      }
+    },
+
+    {
+      "id": "reports_panel",
+      "name": "Reports Panel",
+      "type": "placeholder_unimplemented",
+      "frames": ["frame_reports_placeholder"],
+      "primary_frame": "frame_reports_placeholder",
+      "current_state": {
+        "layout": "empty_placeholder",
+        "title": "ReportsPanel",
+        "content": "Single text label 'ReportsPanel' on empty background",
+        "functionality": "NONE - completely unimplemented"
+      },
+      "issues": [
+        { "severity": "critical", "category": "feature", "description": "Completely unimplemented - shows only 'ReportsPanel' placeholder text", "frames": ["frame_reports_placeholder"] },
+        { "severity": "critical", "category": "business_value", "description": "No business intelligence or analytics capability at all" },
+        { "severity": "high", "category": "ux", "description": "Dead navigation link in sidebar leads to empty screen" }
+      ],
+      "nextjs_proposal": {
+        "route": "/dashboard/reports",
+        "layout": "dashboard (sidebar + header)",
+        "features": [
+          "Interactive dashboard with Recharts / Chart.js visualizations",
+          "Date range picker for all reports",
+          "Sales reports: daily, weekly, monthly revenue with period comparison",
+          "Product reports: best sellers, slow movers, margin analysis, stock turnover",
+          "Customer reports: top customers by spend, purchase frequency, retention",
+          "Employee reports: sales per cashier, transaction count, average sale value",
+          "Inventory reports: stock levels, reorder alerts, dead stock identification",
+          "Export all reports to PDF, Excel, and CSV",
+          "Scheduled report email delivery (future enhancement)"
+        ],
+        "chart_types": ["line (revenue trends)", "bar (top products)", "pie (category distribution)", "area (cumulative sales)", "table (detailed breakdowns)"]
+      }
+    }
+  ],
+
+  "bugs": [
+    {
+      "id": "BUG-001",
+      "screen": "process_sale",
+      "severity": "critical",
+      "category": "ui",
+      "title": "jLabel4 placeholder visible",
+      "description": "'jLabel4' placeholder text from Java Swing form designer is visible at the bottom of the Process Sale screen, indicating unfinished development.",
+      "frames": ["frame_pos_sale", "frame_pos_cart_items", "frame_pos_customer_select"],
+      "reproduction": "Navigate to Sales > Invoice screen. Look at bottom center area below the main panels."
+    },
+    {
+      "id": "BUG-002",
+      "screen": "process_sale",
+      "severity": "critical",
+      "category": "ui",
+      "title": "jButton4 placeholder visible",
+      "description": "'jButton4' placeholder button from Java Swing form designer is visible at the bottom-right of the Process Sale screen.",
+      "frames": ["frame_pos_sale", "frame_pos_cart_items"],
+      "reproduction": "Navigate to Sales > Invoice screen. Look at bottom-right corner."
+    },
+    {
+      "id": "BUG-003",
+      "screen": "process_sale",
+      "severity": "critical",
+      "category": "logic",
+      "title": "Duplicate line items not merged",
+      "description": "Adding the same product (oil) multiple times creates separate line items instead of incrementing the quantity on the existing line. Shows 'oil qty:5 total:260' and 'oil qty:1 total:260' as separate rows instead of 'oil qty:6 total:1560'.",
+      "frames": ["frame_pos_cart_items"],
+      "reproduction": "1. Add 'oil' with qty 5. 2. Add 'oil' again with qty 1. 3. Observe two separate rows in Sale Items table.",
+      "expected": "Single row: oil, qty 6, total 1560.0",
+      "actual": "Two rows: oil qty 5 total 260.0, oil qty 1 total 260.0"
+    },
+    {
+      "id": "BUG-004",
+      "screen": "process_sale",
+      "severity": "critical",
+      "category": "logic",
+      "title": "Possible invoice total calculation error",
+      "description": "Invoice shows oil qty 5 @ 260 = 1300 and oil qty 1 @ 260 = 260, which sums to 1560. However the displayed total is 520.0. Either the invoice display is wrong or the per-line totals are wrong.",
+      "frames": ["frame_invoice_dialog"],
+      "reproduction": "Create invoice with oil x5 and oil x1. Check total on invoice text output."
+    },
+    {
+      "id": "BUG-005",
+      "screen": "invoice_panel",
+      "severity": "critical",
+      "category": "feature",
+      "title": "Invoice Panel completely unimplemented",
+      "description": "The Invoice Panel navigation item leads to a blank screen showing only the text 'InvoicePanel'. No invoice listing, searching, or viewing functionality exists.",
+      "frames": ["frame_invoice_placeholder"],
+      "reproduction": "Click 'Invoice' in the sidebar navigation."
+    },
+    {
+      "id": "BUG-006",
+      "screen": "reports_panel",
+      "severity": "critical",
+      "category": "feature",
+      "title": "Reports Panel completely unimplemented",
+      "description": "The Reports Panel navigation item leads to a blank screen showing only the text 'ReportsPanel'. No reporting, charts, or analytics functionality exists.",
+      "frames": ["frame_reports_placeholder"],
+      "reproduction": "Click 'Reports' in the sidebar navigation."
+    },
+    {
+      "id": "BUG-007",
+      "screen": "customers",
+      "severity": "medium",
+      "category": "data_quality",
+      "title": "Inconsistent phone number formats",
+      "description": "Customer phone numbers are stored in wildly inconsistent formats with no validation: 12345, 77-88-9, 03149972883, 9999988, 1234567890, 1234568133.",
+      "frames": ["frame_customers_list"],
+      "reproduction": "View Customer Information table, observe Phone No column."
+    },
+    {
+      "id": "BUG-008",
+      "screen": "suppliers",
+      "severity": "medium",
+      "category": "data_quality",
+      "title": "Backtick character in phone number",
+      "description": "Supplier phone number for 'mike' (Id 2 and 6) contains a backtick character: '`456-7854'.",
+      "frames": ["frame_suppliers_list"],
+      "reproduction": "View Supplier Information table, observe Phone No for Id 2 and 6."
+    },
+    {
+      "id": "BUG-009",
+      "screen": "all_crud",
+      "severity": "high",
+      "category": "ux",
+      "title": "No delete confirmation",
+      "description": "Clicking Delete on any CRUD screen immediately deletes the selected record with no confirmation dialog. This is a destructive action with no undo capability.",
+      "frames": ["frame_customers_list", "frame_suppliers_list", "frame_employees_list"],
+      "reproduction": "Select any row in any CRUD table. Click Delete. Record is immediately removed."
+    },
+    {
+      "id": "BUG-010",
+      "screen": "all_crud",
+      "severity": "medium",
+      "category": "ux",
+      "title": "Inconsistent CRUD patterns across screens",
+      "description": "Three different CRUD UI patterns are used: Customers uses a modal dialog for add; Suppliers/Employees use inline top-bar forms; Products uses icon buttons with a different layout. This creates a confusing and unpredictable user experience.",
+      "frames": ["frame_customers_add_dialog", "frame_suppliers_list", "frame_products_list"],
+      "reproduction": "Compare the add/edit flow across Customers, Suppliers, and Products screens."
+    }
+  ],
+
+  "migration_roadmap": {
+    "total_estimated_weeks": "12-16",
+    "team_size": "2-3 developers",
+    "phases": [
+      {
+        "phase": 1,
+        "name": "Foundation",
+        "weeks": "1-3",
+        "scope": "Next.js project setup, authentication, database schema, layout system",
+        "deliverables": [
+          "Next.js 14 project with App Router, TypeScript, Tailwind CSS, shadcn/ui",
+          "Prisma schema with all entities and relations",
+          "PostgreSQL database setup and seed data migration",
+          "next-auth v5 with credential provider and JWT sessions",
+          "middleware.ts with RBAC route protection",
+          "Dashboard layout (sidebar, header, breadcrumbs)",
+          "Login page with validation"
+        ],
+        "exit_criteria": "User can log in with role-based redirect, protected routes enforce access"
+      },
+      {
+        "phase": 2,
+        "name": "Master Data",
+        "weeks": "4-7",
+        "scope": "All CRUD screens with consistent UI patterns",
+        "deliverables": [
+          "Reusable DataTable component with TanStack Table",
+          "Reusable form slide-over panel component",
+          "Customers CRUD with search, pagination, sort",
+          "Suppliers CRUD with product association",
+          "Employees CRUD with role assignment and auth link",
+          "Products CRUD with image upload and barcode",
+          "Categories CRUD with hierarchical tree"
+        ],
+        "exit_criteria": "All master data can be managed with consistent UX, data validated"
+      },
+      {
+        "phase": 3,
+        "name": "POS Terminal",
+        "weeks": "8-11",
+        "scope": "Full sales flow, payments, invoicing",
+        "deliverables": [
+          "Full-screen POS terminal layout",
+          "Product search + category tabs + barcode scanning",
+          "Cart management with auto-merge and quantity edit",
+          "Tax calculation engine",
+          "Multi-payment processing (cash, card, UPI, split)",
+          "PDF invoice generation",
+          "Thermal receipt printing",
+          "Stock deduction on sale completion",
+          "Hold/recall sale functionality"
+        ],
+        "exit_criteria": "Complete sale can be processed end-to-end with receipt"
+      },
+      {
+        "phase": 4,
+        "name": "Analytics & Polish",
+        "weeks": "12-16",
+        "scope": "Reports, dashboard, mobile optimization, testing",
+        "deliverables": [
+          "Dashboard with KPI cards and charts",
+          "Sales reports with date range filtering",
+          "Product and inventory reports",
+          "Customer and employee reports",
+          "Export to PDF/Excel/CSV",
+          "Invoice management panel (list, search, status)",
+          "Mobile responsive optimization",
+          "PWA support for offline POS",
+          "End-to-end test suite (Playwright)",
+          "Performance optimization and load testing"
+        ],
+        "exit_criteria": "All features operational, mobile responsive, test coverage > 80%"
+      }
+    ]
+  },
+
+  "nextjs_architecture": {
+    "route_map": [
+      { "path": "/login", "auth": "public", "roles": ["all"], "layout": "auth", "screen_origin": "login" },
+      { "path": "/dashboard", "auth": "protected", "roles": ["all"], "layout": "dashboard", "screen_origin": null, "note": "NEW - no equivalent in current app" },
+      { "path": "/dashboard/customers", "auth": "protected", "roles": ["ADMIN", "MANAGER"], "layout": "dashboard", "screen_origin": "customers" },
+      { "path": "/dashboard/customers/[id]", "auth": "protected", "roles": ["ADMIN", "MANAGER"], "layout": "dashboard", "screen_origin": "customers", "note": "NEW detail page" },
+      { "path": "/dashboard/suppliers", "auth": "protected", "roles": ["ADMIN"], "layout": "dashboard", "screen_origin": "suppliers" },
+      { "path": "/dashboard/suppliers/[id]", "auth": "protected", "roles": ["ADMIN"], "layout": "dashboard", "screen_origin": "suppliers", "note": "NEW detail page" },
+      { "path": "/dashboard/employees", "auth": "protected", "roles": ["ADMIN"], "layout": "dashboard", "screen_origin": "employees" },
+      { "path": "/dashboard/employees/[id]", "auth": "protected", "roles": ["ADMIN"], "layout": "dashboard", "screen_origin": "employees", "note": "NEW detail page" },
+      { "path": "/dashboard/products", "auth": "protected", "roles": ["ADMIN", "MANAGER"], "layout": "dashboard", "screen_origin": "products" },
+      { "path": "/dashboard/products/[id]", "auth": "protected", "roles": ["ADMIN", "MANAGER"], "layout": "dashboard", "screen_origin": "products", "note": "NEW detail page" },
+      { "path": "/dashboard/categories", "auth": "protected", "roles": ["ADMIN"], "layout": "dashboard", "screen_origin": "categories" },
+      { "path": "/dashboard/invoices", "auth": "protected", "roles": ["all"], "layout": "dashboard", "screen_origin": "invoice_panel" },
+      { "path": "/dashboard/invoices/[id]", "auth": "protected", "roles": ["all"], "layout": "dashboard", "screen_origin": "invoice_panel", "note": "NEW detail page" },
+      { "path": "/dashboard/reports", "auth": "protected", "roles": ["ADMIN", "MANAGER"], "layout": "dashboard", "screen_origin": "reports_panel" },
+      { "path": "/pos", "auth": "protected", "roles": ["CASHIER", "MANAGER"], "layout": "fullscreen_pos", "screen_origin": "process_sale" },
+      { "path": "/settings", "auth": "protected", "roles": ["ADMIN"], "layout": "dashboard", "screen_origin": null, "note": "NEW" }
+    ],
+    "layouts": {
+      "auth": "Centered card, no sidebar. Used for /login only.",
+      "dashboard": "Left sidebar + top header + breadcrumbs + main content area. Used for all /dashboard/* routes.",
+      "fullscreen_pos": "No sidebar, minimal header with clock + user. Full viewport for POS terminal. Used for /pos only."
+    },
+    "tech_stack": {
+      "framework": { "name": "Next.js 14+", "features": ["App Router", "Server Components", "Server Actions", "Middleware", "API Routes"] },
+      "language": "TypeScript",
+      "styling": "Tailwind CSS 3.4+",
+      "ui_library": "shadcn/ui",
+      "state_client": "Zustand",
+      "state_server": "TanStack React Query v5",
+      "forms": "React Hook Form + Zod",
+      "tables": "TanStack Table v8",
+      "charts": "Recharts",
+      "orm": "Prisma",
+      "database": "PostgreSQL",
+      "auth": "NextAuth.js v5 (Auth.js)",
+      "pdf": "@react-pdf/renderer",
+      "realtime": "Pusher or Socket.io",
+      "file_storage": "S3 or Cloudinary",
+      "deployment": "Vercel or AWS Amplify",
+      "testing": "Vitest + Playwright"
+    }
+  }
+}
