@@ -332,7 +332,7 @@ function AnalysisScreenshotStrip({ screenshots }: { screenshots: AgentEvent[] })
   )
 }
 
-function AnalysisConsoles({ events }: { events: AgentEvent[] }) {
+function AnalysisConsoles({ events, project }: { events: AgentEvent[]; project: Project }) {
   const thoughtEvents = useMemo(
     () => events.filter((e) => e.event_type === "thought"),
     [events]
@@ -359,25 +359,86 @@ function AnalysisConsoles({ events }: { events: AgentEvent[] }) {
     [thoughtEvents]
   )
 
-  return (
-    <div className="flex flex-1 flex-col gap-3 min-h-0">
-      {/* Planner console — full width on top, only when events exist */}
-      {plannerEvents.length > 0 && (
-        <div className="shrink-0 max-h-[30%]">
+  // Console visibility conditions
+  const showPlanner = project.pipeline_step === "planning" || project.pipeline_step === "generate_slices"
+  const showCodeAnalysis = !!project.github_url
+  const showAppBehaviour = !!project.right_brain_status
+  const hasPlannerVisible = showPlanner && plannerEvents.length > 0
+
+  // Count visible brain panels for grid columns
+  const brainPanelCount = (showCodeAnalysis ? 1 : 0) + (showAppBehaviour ? 1 : 0)
+
+  /*
+   * Layout strategy:
+   * - When planner + brain consoles all visible:
+   *     Top row: Planner (full width) — flex: 2
+   *     Bottom row: Code Analysis | App Behaviour side-by-side — flex: 3
+   * - When only brain consoles visible:
+   *     Full height side-by-side
+   * - Fallback: single Pipeline panel
+   *
+   * All use flex-grow, never fixed heights, to prevent overflow.
+   */
+
+  // All three visible: 2-row layout
+  if (hasPlannerVisible && brainPanelCount > 0) {
+    return (
+      <div className="flex flex-1 flex-col gap-3 min-h-0">
+        {/* Top: Planner console (flex-[2]) */}
+        <div className="flex min-h-0 flex-2">
           <LogPanel title="Planner" events={plannerEvents} accentColor="warning" />
         </div>
-      )}
 
-      {/* Brain consoles — side by side below */}
-      <div className="flex flex-1 gap-3 min-h-0">
-        <LogPanel title="Code Analysis" events={codeAnalysisEvents} accentColor="electric-cyan" />
-        <div className="flex flex-1 flex-col gap-2 min-w-0 min-h-0">
-          <LogPanel title="App Behaviour Analysis" events={appBehaviourEvents} accentColor="rail-purple" />
-          {screenshotEvents.length > 0 && (
-            <AnalysisScreenshotStrip screenshots={screenshotEvents} />
+        {/* Bottom: Brain consoles side by side (flex-3) */}
+        <div className="flex min-h-0 flex-3 gap-3">
+          {showCodeAnalysis && (
+            <LogPanel title="Code Analysis" events={codeAnalysisEvents} accentColor="electric-cyan" />
+          )}
+          {showAppBehaviour && (
+            <div className="flex flex-1 flex-col gap-2 min-w-0 min-h-0">
+              <LogPanel title="App Behaviour Analysis" events={appBehaviourEvents} accentColor="rail-purple" />
+              {screenshotEvents.length > 0 && (
+                <AnalysisScreenshotStrip screenshots={screenshotEvents} />
+              )}
+            </div>
           )}
         </div>
       </div>
+    )
+  }
+
+  // Only planner visible (no brain panels)
+  if (hasPlannerVisible) {
+    return (
+      <div className="flex flex-1 min-h-0">
+        <LogPanel title="Planner" events={plannerEvents} accentColor="warning" />
+      </div>
+    )
+  }
+
+  // Only brain consoles (no planner)
+  if (brainPanelCount > 0) {
+    return (
+      <div className="flex flex-1 gap-3 min-h-0">
+        {showCodeAnalysis && (
+          <LogPanel title="Code Analysis" events={codeAnalysisEvents} accentColor="electric-cyan" />
+        )}
+        {showAppBehaviour && (
+          <div className="flex flex-1 flex-col gap-2 min-w-0 min-h-0">
+            <LogPanel title="App Behaviour Analysis" events={appBehaviourEvents} accentColor="rail-purple" />
+            {screenshotEvents.length > 0 && (
+              <AnalysisScreenshotStrip screenshots={screenshotEvents} />
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // Fallback: single pipeline panel
+  return (
+    <div className="flex flex-1 min-h-0">
+      <LogPanel title="Pipeline" events={plannerEvents} accentColor="electric-cyan" />
     </div>
   )
 }
@@ -469,7 +530,7 @@ export function AnalysisDashboard({ projectId, project, onPause }: AnalysisDashb
         animate={contentVisible ? { opacity: 1, y: 0 } : {}}
         transition={{ delay: 0.3, duration: 0.3 }}
       >
-        <AnalysisConsoles events={events} />
+        <AnalysisConsoles events={events} project={project} />
       </motion.div>
     </BreathingGlow>
   )

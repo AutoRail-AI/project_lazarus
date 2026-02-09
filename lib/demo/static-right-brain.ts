@@ -184,12 +184,12 @@ export async function demoStaticRightBrain(
 
   await pacedLog(
     projectId,
-    "[App Behaviour] Connecting to Knowledge Extraction Service (static mode)...",
+    "[App Behaviour] Connecting to Knowledge Extraction Service...",
     400
   )
   await pacedLog(
     projectId,
-    "[App Behaviour] Loading pre-computed POS analysis data...",
+    "[App Behaviour] Starting App behaviour analysis...",
     500
   )
   await pacedLog(

@@ -1000,9 +1000,9 @@ export async function processDemoProjectJob(
       runLeftBrain: needsLeftBrain
         ? () => demoLeftBrain(projectId, job, githubUrl)
         : undefined,
-      // In demo mode, always use the static right brain (pre-computed POS analysis).
-      // The real Right Brain API takes ~1 hour; static data is instant + dramatic.
-      runRightBrain: needsRightBrain
+      // In demo mode, use the static right brain (pre-computed POS analysis)
+      // but only when uploaded assets exist — no assets means no App Behaviour console.
+      runRightBrain: needsRightBrain && uploadedAssets.length > 0
         ? () => demoStaticRightBrain(projectId, job)
         : undefined,
     })
@@ -1185,17 +1185,24 @@ export async function processDemoProjectJob(
           const errMsg = geminiError instanceof Error ? geminiError.message : "Unknown error"
           console.error("[Demo Pipeline] Gemini planner failed:", geminiError)
           await pacedLog(projectId, `Gemini planner error: ${errMsg}`, 500)
+          await setErrorContext(projectId, {
+            step: "planning",
+            message: `Gemini planner failed: ${errMsg}`,
+            timestamp: new Date().toISOString(),
+            retryable: true,
+          })
         }
 
         await job.updateProgress(90)
 
-        // Delete existing slices for idempotency
-        await (supabase as any)
-          .from("vertical_slices")
-          .delete()
-          .eq("project_id", projectId)
-
+        // Only delete + replace slices if we actually generated new ones.
+        // If Gemini failed (slices=[]), preserve any previously generated slices.
         if (slices.length > 0) {
+          await (supabase as any)
+            .from("vertical_slices")
+            .delete()
+            .eq("project_id", projectId)
+
           const sliceRows = slices.map((slice, index) => ({
             project_id: projectId,
             name: slice.name,

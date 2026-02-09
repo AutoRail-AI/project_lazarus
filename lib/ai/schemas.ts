@@ -35,7 +35,7 @@ export const architectPlanEntrySchema = z.object({
     ),
 })
 
-export const architectPlanSchema = z.array(architectPlanEntrySchema)
+export const architectPlanSchema = z.array(architectPlanEntrySchema).max(10)
 export type ArchitectPlanEntry = z.infer<typeof architectPlanEntrySchema>
 
 /* -------------------------------------------------------------------------- */

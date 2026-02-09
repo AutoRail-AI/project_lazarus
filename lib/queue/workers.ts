@@ -423,14 +423,14 @@ async function processProjectJob(
 
         await job.updateProgress(90)
 
-        // DELETE existing slices for idempotency (prevents duplicates on retry)
-        await (supabase as any)
-          .from("vertical_slices")
-          .delete()
-          .eq("project_id", projectId)
-
-        // Insert slices into vertical_slices table
+        // Only delete + replace slices if we generated new ones.
+        // If Gemini failed (slices=[]), preserve any previously generated slices.
         if (slices.length > 0) {
+          await (supabase as any)
+            .from("vertical_slices")
+            .delete()
+            .eq("project_id", projectId)
+
           const sliceRows = slices.map((slice, index) => ({
             project_id: projectId,
             name: slice.name,

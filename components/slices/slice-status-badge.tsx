@@ -1,19 +1,25 @@
 "use client"
 
 import {
+  Activity,
   CheckCircle2,
   Clock,
+  FileText,
   FlaskConical,
   Heart,
   Loader2,
+  PauseCircle,
   Target,
   XCircle,
+  Zap,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import type { SliceStatus } from "@/lib/db/types"
+import type { ProjectStatus, SliceStatus } from "@/lib/db/types"
+
+type BadgeStatus = SliceStatus | ProjectStatus
 
 const STATUS_CONFIG: Record<
-  SliceStatus,
+  BadgeStatus,
   {
     label: string
     className: string
@@ -66,10 +72,36 @@ const STATUS_CONFIG: Record<
     borderClass: "border-error/20",
     icon: XCircle,
   },
+  // Project-specific statuses
+  processing: {
+    label: "Processing",
+    className: "bg-electric-cyan/15 text-electric-cyan animate-pulse-glow",
+    borderClass: "border-electric-cyan/20",
+    icon: Activity,
+    iconClass: "animate-pulse",
+  },
+  analyzed: {
+    label: "Analyzed",
+    className: "bg-rail-purple/20 text-quantum-violet",
+    borderClass: "border-quantum-violet/20",
+    icon: FileText,
+  },
+  ready: {
+    label: "Ready",
+    className: "bg-success/15 text-success",
+    borderClass: "border-success/20",
+    icon: Zap,
+  },
+  paused: {
+    label: "Paused",
+    className: "bg-warning/15 text-warning",
+    borderClass: "border-warning/20",
+    icon: PauseCircle,
+  },
 }
 
 interface SliceStatusBadgeProps {
-  status: SliceStatus
+  status: BadgeStatus
   size?: "sm" | "md"
   className?: string
 }
@@ -79,8 +111,9 @@ export function SliceStatusBadge({
   size = "sm",
   className,
 }: SliceStatusBadgeProps) {
-  const config = STATUS_CONFIG[status]
+  const config = STATUS_CONFIG[status] || STATUS_CONFIG.pending
   const Icon = config.icon
+
   const isMd = size === "md"
 
   return (

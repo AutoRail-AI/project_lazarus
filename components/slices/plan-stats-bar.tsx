@@ -93,7 +93,7 @@ export function PlanStatsBar({ project, slices }: PlanStatsBarProps) {
           <h1 className="font-grotesk text-lg font-semibold text-foreground">
             {project.name}
           </h1>
-          <SliceStatusBadge status={project.status as SliceStatus} />
+          <SliceStatusBadge status={project.status} />
         </div>
 
         {/* Metric cells */}
