@@ -1034,26 +1034,26 @@ export function AnalysisConfigView({ projectId, project, onConfigure }: Analysis
           </TabsList>
 
           <AnimatePresence mode="wait">
-            {hasBehaviorData && (
-              <TabsContent value="behavior" className="mt-0">
+            {hasBehaviorData ? (
+              <TabsContent key="behavior" value="behavior" className="mt-0">
                 <AppBehaviourTab data={behavioralAnalysis} analysisJson={analysisJson} />
               </TabsContent>
-            )}
-            {hasCodeData && (
-              <TabsContent value="code" className="mt-0">
+            ) : null}
+            {hasCodeData ? (
+              <TabsContent key="code" value="code" className="mt-0">
                 <CodeIntelligenceTab data={codeAnalysis} />
               </TabsContent>
-            )}
-            {hasBugs && (
-              <TabsContent value="bugs" className="mt-0">
+            ) : null}
+            {hasBugs ? (
+              <TabsContent key="bugs" value="bugs" className="mt-0">
                 <BugRegistryTab bugSummary={behavioralAnalysis?.bugSummary} analysisJson={analysisJson} />
               </TabsContent>
-            )}
-            {hasRoutes && (
-              <TabsContent value="routes" className="mt-0">
+            ) : null}
+            {hasRoutes ? (
+              <TabsContent key="routes" value="routes" className="mt-0">
                 <RouteArchitectureTab analysisJson={analysisJson} />
               </TabsContent>
-            )}
+            ) : null}
           </AnimatePresence>
         </Tabs>
       </motion.div>

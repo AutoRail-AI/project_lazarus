@@ -431,6 +431,7 @@ async function processProjectJob(
             .delete()
             .eq("project_id", projectId)
 
+          // Insert slices with empty dependencies first (column is UUID[])
           const sliceRows = slices.map((slice, index) => ({
             project_id: projectId,
             name: slice.name,
@@ -440,17 +441,40 @@ async function processProjectJob(
             behavioral_contract: slice.behavioral_contract || null,
             code_contract: slice.code_contract || null,
             modernization_flags: slice.modernization_flags || null,
-            dependencies: slice.dependencies || [],
+            dependencies: [] as string[],
             confidence_score: 0,
             retry_count: 0,
           }))
 
-          const { error: insertError } = await (supabase as any)
+          const { data: insertedSlices, error: insertError } = (await (supabase as any)
             .from("vertical_slices")
             .insert(sliceRows)
+            .select("id, name")) as { data: Array<{ id: string; name: string }> | null; error: unknown }
 
           if (insertError) {
             console.error("Failed to insert slices:", insertError)
+          }
+
+          // Map dependency names → UUIDs and update each slice
+          if (insertedSlices && insertedSlices.length > 0) {
+            const nameToId = new Map<string, string>()
+            for (const s of insertedSlices) {
+              nameToId.set(s.name, s.id)
+            }
+
+            for (const slice of slices) {
+              const sliceId = nameToId.get(slice.name)
+              if (!sliceId || !slice.dependencies?.length) continue
+              const depIds = slice.dependencies
+                .map((depName) => nameToId.get(depName))
+                .filter((id): id is string => !!id)
+              if (depIds.length > 0) {
+                await (supabase as any)
+                  .from("vertical_slices")
+                  .update({ dependencies: depIds })
+                  .eq("id", sliceId)
+              }
+            }
           }
         }
 
