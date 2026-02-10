@@ -2,29 +2,23 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { AnimatePresence, motion } from "framer-motion"
+import { Terminal, Globe, X, CheckCircle2, ArrowLeft } from "lucide-react"
+import { cn } from "@/lib/utils"
 import type { Database } from "@/lib/db/types"
 import { useAgentEvents } from "@/hooks/use-agent-events"
-import { ConfidenceGauge } from "./confidence-gauge"
-import { PlanPaneEnhanced } from "./plan-pane-enhanced"
-import { WorkPaneEnhanced } from "./work-pane-enhanced"
-import { ThoughtsPane } from "./thoughts-pane"
 import { HeaderStats } from "./header-stats"
-import { ActivityTimeline } from "./activity-timeline"
 import { VictoryLap } from "./victory-lap"
-import { PaneConnectionLines, BreathingGlow } from "./ambient-effects"
-import { deriveStats, getConfidenceHistory } from "./derive-stats"
-import {
-  deriveBuildStep,
-  deriveBuildPhase,
-  deriveActiveBrain,
-  groupSelfHealCycles,
-  extractMCPToolCalls,
-} from "./derive-build-phase"
-import { BuildNarrativeBar } from "./build-narrative-bar"
-import { BuildPipelineTracker } from "./build-pipeline-tracker"
+import { BreathingGlow } from "./ambient-effects"
+import { deriveStats } from "./derive-stats"
+import { extractMCPToolCalls } from "./derive-build-phase"
 import { CostTicker } from "./cost-ticker"
 import { ChaosButton } from "./chaos-button"
 import { MCPToolInspector } from "./mcp-tool-inspector"
+import { WorkspaceExplorer } from "./workspace-explorer"
+import { BuildConsole } from "./build-console"
+import { ChatPane } from "./chat-pane"
+import { FileViewer } from "./file-viewer"
+import { BrowserTestPanel } from "./browser-test-panel"
 
 type Slice = Database["public"]["Tables"]["vertical_slices"]["Row"]
 
@@ -32,6 +26,10 @@ interface GlassBrainDashboardProps {
   projectId: string
   projectName: string
   slices: Slice[]
+  /** True when the project has completed — renders in read-only audit mode */
+  isComplete?: boolean
+  /** Callback to switch to overview page */
+  onShowOverview?: () => void
 }
 
 /* -------------------------------------------------------------------------- */
@@ -143,67 +141,43 @@ export function GlassBrainDashboard({
   projectId,
   projectName,
   slices,
+  isComplete = false,
+  onShowOverview,
 }: GlassBrainDashboardProps) {
-  const [booted, setBooted] = useState(false)
-  const [panesVisible, setPanesVisible] = useState(false)
+  // Skip boot animation for completed projects — show data immediately
+  const [booted, setBooted] = useState(isComplete)
+  const [panesVisible, setPanesVisible] = useState(isComplete)
   const [mcpInspectorOpen, setMcpInspectorOpen] = useState(false)
 
-  const { events, confidence, muted, toggleMute, activeSliceId } =
+  // Editor tabs (top half of center pane)
+  const [openFiles, setOpenFiles] = useState<string[]>([])
+  const [activeFileTab, setActiveFileTab] = useState<string | null>(null)
+  const [dirtyFiles, setDirtyFiles] = useState<Set<string>>(new Set())
+
+  // Bottom panel tabs (Console / Browser)
+  const [activeBottomTab, setActiveBottomTab] = useState<"console" | "browser">("console")
+
+  const { events, confidence, activeSliceId } =
     useAgentEvents(projectId, {
       initialConfidence: 0,
-      soundEnabled: true,
+      soundEnabled: false,
     })
 
   // Elapsed time ref for VictoryLap
   const elapsedRef = useRef<number>(0)
 
-  // ---- noVNC + screenshots ----
-  const novncUrl = process.env.NEXT_PUBLIC_NOVNC_URL ?? null
-
-  const screenshots = useMemo(
-    () => events.filter((e) => e.event_type === "screenshot"),
-    [events]
-  )
-
-  // ---- Build Experience derived values ----
-  const { step: currentStep, stepStatuses } = useMemo(
-    () => deriveBuildStep(events),
-    [events]
-  )
-  const currentPhase = useMemo(
-    () => deriveBuildPhase(events, confidence),
-    [events, confidence]
-  )
-  const activeBrain = useMemo(() => deriveActiveBrain(events), [events])
-  const selfHealCycles = useMemo(() => groupSelfHealCycles(events), [events])
-  const activeSelfHealCycle = useMemo(
-    () => selfHealCycles.find((c) => c.isActive) ?? null,
-    [selfHealCycles]
-  )
+  // MCP tool calls (keep for inspector)
   const mcpToolCalls = useMemo(() => extractMCPToolCalls(events), [events])
 
-  // Self-heal spotlight: driven by activeSelfHealCycle
-  const healSpotlight = activeSelfHealCycle?.isActive ?? false
+  // Browser events detection
+  const hasBrowserEvents = useMemo(
+    () => events.some((e) => e.event_type === "screenshot" || e.event_type === "browser_action" || e.event_type === "app_start"),
+    [events]
+  )
 
-  // Legacy heal spotlight timer (for dims) — keep for pane dimming
-  const lastHealCountRef = useMemo(() => ({ value: 0 }), [])
-  const [healDim, setHealDim] = useState(false)
-
-  useEffect(() => {
-    const healEvents = events.filter((e) => e.event_type === "self_heal")
-    if (healEvents.length > lastHealCountRef.value) {
-      lastHealCountRef.value = healEvents.length
-      setHealDim(true)
-      const timer = setTimeout(() => setHealDim(false), 3000)
-      return () => clearTimeout(timer)
-    }
-  }, [events, lastHealCountRef])
-
-  const shouldDim = healSpotlight || healDim
-
-  // Victory lap: triggers once when confidence >= 0.85
+  // Victory lap: triggers once when confidence >= 0.85 (never for completed/audit mode)
   const [showVictory, setShowVictory] = useState(false)
-  const victoryTriggeredRef = useRef(false)
+  const victoryTriggeredRef = useRef(isComplete)
 
   useEffect(() => {
     if (confidence >= 0.85 && !victoryTriggeredRef.current) {
@@ -214,7 +188,6 @@ export function GlassBrainDashboard({
 
   const handleBootComplete = useCallback(() => {
     setBooted(true)
-    // Stagger pane reveal after boot
     setTimeout(() => setPanesVisible(true), 200)
   }, [])
 
@@ -230,6 +203,44 @@ export function GlassBrainDashboard({
     setMcpInspectorOpen(false)
   }, [])
 
+  const hasOpenFiles = openFiles.length > 0
+
+  // File tab handlers
+  const handleFileSelect = useCallback((path: string) => {
+    setOpenFiles((prev) => (prev.includes(path) ? prev : [...prev, path]))
+    setActiveFileTab(path)
+  }, [])
+
+  const handleCloseFile = useCallback((path: string) => {
+    setOpenFiles((prev) => {
+      const next = prev.filter((p) => p !== path)
+      // If we closed the active tab, switch to the last remaining or null
+      setActiveFileTab((cur) => {
+        if (cur !== path) return cur
+        const lastFile = next[next.length - 1]
+        return lastFile ?? null
+      })
+      return next
+    })
+    setDirtyFiles((prev) => {
+      const next = new Set(prev)
+      next.delete(path)
+      return next
+    })
+  }, [])
+
+  const handleDirtyChange = useCallback((path: string, dirty: boolean) => {
+    setDirtyFiles((prev) => {
+      const next = new Set(prev)
+      if (dirty) next.add(path)
+      else next.delete(path)
+      return next
+    })
+  }, [])
+
+  // Derive selectedPath for workspace explorer highlight
+  const selectedPath = activeFileTab ?? undefined
+
   // Find the currently building slice
   const activeSlice = useMemo(
     () => slices.find((s) => s.id === activeSliceId) ?? slices.find((s) => s.status === "building"),
@@ -238,7 +249,6 @@ export function GlassBrainDashboard({
 
   // Derived stats for victory lap
   const stats = useMemo(() => deriveStats(events, confidence), [events, confidence])
-  const confidenceHistory = useMemo(() => getConfidenceHistory(events, 0), [events])
 
   // Pane stagger animation
   const paneVariants = {
@@ -269,40 +279,16 @@ export function GlassBrainDashboard({
           confidence={confidence}
           projectName={projectName}
           activeSlice={activeSlice}
-          muted={muted}
-          toggleMute={toggleMute}
+          slices={slices}
           elapsedRef={elapsedRef}
-          currentPhase={currentPhase}
-          activeBrain={activeBrain}
           mcpCallCount={mcpToolCalls.length}
           onToggleMCPInspector={handleToggleMCPInspector}
         />
       </motion.div>
 
-      {/* Narrative bar */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={panesVisible ? { opacity: 1 } : {}}
-        transition={{ delay: 0.15, duration: 0.3 }}
-      >
-        <BuildNarrativeBar events={events} currentPhase={currentPhase} />
-      </motion.div>
-
-      {/* Build pipeline tracker */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={panesVisible ? { opacity: 1 } : {}}
-        transition={{ delay: 0.2, duration: 0.3 }}
-      >
-        <BuildPipelineTracker stepStatuses={stepStatuses} currentStep={currentStep} />
-      </motion.div>
-
-      {/* Three panes with connection lines */}
+      {/* Three panes: File Explorer | Tabbed Center | Chat */}
       <div className="relative grid min-h-0 flex-1 grid-cols-[1fr_2fr_1fr] gap-3">
-        {/* Connection lines overlay */}
-        <PaneConnectionLines />
-
-        {/* Plan Pane */}
+        {/* Workspace Explorer */}
         <motion.div
           className="min-h-0"
           custom={0}
@@ -310,39 +296,133 @@ export function GlassBrainDashboard({
           initial="hidden"
           animate={panesVisible ? "visible" : "hidden"}
         >
-          <motion.div
-            className="h-full"
-            animate={{ opacity: shouldDim ? 0.4 : 1 }}
-            transition={{ duration: 0.3 }}
-          >
-            <PlanPaneEnhanced slices={slices} activeSliceId={activeSliceId} events={events} />
-          </motion.div>
+          <WorkspaceExplorer
+            projectId={projectId}
+            events={events}
+            onFileSelect={handleFileSelect}
+            selectedPath={selectedPath}
+          />
         </motion.div>
 
-        {/* Work Pane */}
+        {/* Center Pane — IntelliJ-style vertical split: Editor (top) + Console/Browser (bottom) */}
         <motion.div
-          className="min-h-0"
+          className="flex min-h-0 flex-col overflow-hidden"
           custom={1}
           variants={paneVariants}
           initial="hidden"
           animate={panesVisible ? "visible" : "hidden"}
         >
-          <motion.div
-            className="h-full"
-            animate={{ opacity: shouldDim ? 0.4 : 1 }}
-            transition={{ duration: 0.3 }}
-          >
-            <WorkPaneEnhanced
-              events={events}
-              slices={slices}
-              activeSelfHealCycle={activeSelfHealCycle}
-              novncUrl={novncUrl}
-              screenshots={screenshots}
-            />
-          </motion.div>
+          {/* ── Editor area (top) — only when files are open ── */}
+          {hasOpenFiles && (
+            <div className="flex min-h-0 flex-1 flex-col">
+              {/* Editor tab bar */}
+              <div className="flex rounded-t-lg border border-b-0 border-border bg-card/30 shrink-0 overflow-x-auto">
+                {openFiles.map((path) => {
+                  const fileName = path.split("/").pop() ?? path
+                  const isDirty = dirtyFiles.has(path)
+                  return (
+                    <button
+                      key={path}
+                      type="button"
+                      onClick={() => setActiveFileTab(path)}
+                      className={cn(
+                        "group flex items-center gap-1 shrink-0 border-b-2 px-2.5 py-1.5 text-xs transition-colors",
+                        activeFileTab === path
+                          ? "border-electric-cyan text-electric-cyan"
+                          : "border-transparent text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      {isDirty && (
+                        <span className="h-1.5 w-1.5 rounded-full bg-warning shrink-0" />
+                      )}
+                      <span className="truncate max-w-[120px]">{fileName}</span>
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleCloseFile(path)
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.stopPropagation()
+                            handleCloseFile(path)
+                          }
+                        }}
+                        className="ml-0.5 rounded p-0.5 opacity-0 group-hover:opacity-100 hover:bg-foreground/10 transition-all"
+                      >
+                        <X className="h-2.5 w-2.5" />
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+
+              {/* Editor content */}
+              <div className="flex-1 min-h-0">
+                {openFiles.map((path) =>
+                  activeFileTab === path ? (
+                    <FileViewer
+                      key={path}
+                      projectId={projectId}
+                      filePath={path}
+                      onClose={() => handleCloseFile(path)}
+                      onDirtyChange={handleDirtyChange}
+                    />
+                  ) : null
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ── Bottom panel: Console / Browser ── */}
+          <div className="flex min-h-0 flex-1 flex-col">
+            {/* Bottom tab bar */}
+            <div className={cn(
+              "flex border border-b-0 border-border bg-card/30 shrink-0 overflow-x-auto",
+              hasOpenFiles ? "rounded-none border-t border-border" : "rounded-t-lg"
+            )}>
+              <button
+                type="button"
+                onClick={() => setActiveBottomTab("console")}
+                className={cn(
+                  "flex items-center gap-1.5 shrink-0 border-b-2 px-3 py-1.5 text-xs transition-colors",
+                  activeBottomTab === "console"
+                    ? "border-electric-cyan text-electric-cyan"
+                    : "border-transparent text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <Terminal className="h-3 w-3" />
+                Console
+              </button>
+              {hasBrowserEvents && (
+                <button
+                  type="button"
+                  onClick={() => setActiveBottomTab("browser")}
+                  className={cn(
+                    "flex items-center gap-1.5 shrink-0 border-b-2 px-3 py-1.5 text-xs transition-colors",
+                    activeBottomTab === "browser"
+                      ? "border-electric-cyan text-electric-cyan"
+                      : "border-transparent text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <Globe className="h-3 w-3" />
+                  Browser
+                </button>
+              )}
+            </div>
+
+            {/* Bottom content */}
+            <div className="flex-1 min-h-0">
+              {activeBottomTab === "console" && <BuildConsole events={events} />}
+              {activeBottomTab === "browser" && (
+                <BrowserTestPanel projectId={projectId} events={events} />
+              )}
+            </div>
+          </div>
         </motion.div>
 
-        {/* Thoughts Pane */}
+        {/* Chat Pane */}
         <motion.div
           className="min-h-0"
           custom={2}
@@ -350,34 +430,47 @@ export function GlassBrainDashboard({
           initial="hidden"
           animate={panesVisible ? "visible" : "hidden"}
         >
-          <ThoughtsPane events={events} healSpotlight={shouldDim} />
+          <ChatPane projectId={projectId} events={events} />
         </motion.div>
       </div>
 
-      {/* Activity Timeline */}
+      {/* Bottom bar: completion badge (left) + cost ticker (right) */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={panesVisible ? { opacity: 1, y: 0 } : {}}
         transition={{ delay: 0.5, duration: 0.3 }}
+        className="flex items-center justify-between"
       >
-        <ActivityTimeline events={events} slices={slices} />
-      </motion.div>
-
-      {/* Confidence gauge + Cost ticker row */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={panesVisible ? { opacity: 1, y: 0 } : {}}
-        transition={{ delay: 0.6, duration: 0.3 }}
-        className="flex gap-3"
-      >
-        <div className="flex-1">
-          <ConfidenceGauge score={confidence} history={confidenceHistory} />
-        </div>
+        {isComplete ? (
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1.5 rounded-full border border-success/30 bg-success/10 px-3 py-1">
+              <CheckCircle2 className="h-3.5 w-3.5 text-success" />
+              <span className="text-xs font-medium text-success">Build Complete</span>
+              <span className="text-[10px] text-muted-foreground ml-1">
+                {events.length} events logged
+              </span>
+            </div>
+            {onShowOverview && (
+              <button
+                type="button"
+                onClick={onShowOverview}
+                className="flex items-center gap-1 rounded px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-foreground/5 transition-colors"
+              >
+                <ArrowLeft className="h-3 w-3" />
+                Overview
+              </button>
+            )}
+          </div>
+        ) : (
+          <div />
+        )}
         <CostTicker events={events} />
       </motion.div>
 
-      {/* Chaos Button (floating) */}
-      <ChaosButton projectId={projectId} sliceId={activeSliceId} />
+      {/* Chaos Button (floating) — only during active builds */}
+      {!isComplete && (
+        <ChaosButton projectId={projectId} sliceId={activeSliceId} />
+      )}
 
       {/* MCP Tool Inspector (slide-over) */}
       <MCPToolInspector

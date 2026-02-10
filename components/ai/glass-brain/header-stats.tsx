@@ -1,16 +1,18 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { AnimatePresence, motion } from "framer-motion"
 import {
   Code,
+  Download,
   FlaskConical,
+  LayoutGrid,
   RotateCw,
   Timer,
-  Volume2,
-  VolumeX,
   Wrench,
 } from "lucide-react"
+import Link from "next/link"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
@@ -19,9 +21,6 @@ import type { Database } from "@/lib/db/types"
 import { SliceStatusBadge } from "@/components/slices/slice-status-badge"
 import { ProjectImmersiveActions } from "@/components/projects/project-immersive-actions"
 import { deriveStats, getAgentStatusLabel, getEventTypeColor } from "./derive-stats"
-import type { ActiveBrain, BuildPhase } from "./derive-build-phase"
-import { AgentBrainViz } from "./agent-brain-viz"
-import { BuildPhaseIndicator } from "./build-phase-indicator"
 
 type Slice = Database["public"]["Tables"]["vertical_slices"]["Row"]
 
@@ -31,11 +30,8 @@ interface HeaderStatsProps {
   confidence: number
   projectName: string
   activeSlice?: Slice | null
-  muted: boolean
-  toggleMute: () => void
+  slices?: Slice[]
   elapsedRef: React.RefObject<number>
-  currentPhase?: BuildPhase
-  activeBrain?: ActiveBrain
   mcpCallCount?: number
   onToggleMCPInspector?: () => void
 }
@@ -122,16 +118,104 @@ export function HeaderStats({
   confidence,
   projectName,
   activeSlice,
-  muted,
-  toggleMute,
+  slices,
   elapsedRef,
-  currentPhase,
-  activeBrain,
   mcpCallCount,
   onToggleMCPInspector,
 }: HeaderStatsProps) {
   const stats = deriveStats(events, confidence)
   const statusLabel = getAgentStatusLabel(events)
+
+  const handleExportPlan = useCallback(() => {
+    const allSlices = slices ?? []
+    if (allSlices.length === 0) {
+      toast.error("No slices to export")
+      return
+    }
+
+    const lines: string[] = [
+      `# ${projectName} — Implementation Plan`,
+      "",
+      `**Project ID:** ${projectId}`,
+      `**Total Slices:** ${allSlices.length}`,
+      `**Exported:** ${new Date().toISOString()}`,
+      "",
+      "---",
+      "",
+    ]
+
+    for (const s of allSlices) {
+      lines.push(`## ${s.priority ?? ""}. ${s.name}`)
+      lines.push("")
+      if (s.description) {
+        lines.push(s.description)
+        lines.push("")
+      }
+      lines.push(`**Status:** ${s.status} | **Confidence:** ${((s.confidence_score ?? 0) * 100).toFixed(0)}%`)
+      lines.push("")
+
+      const bc = s.behavioral_contract as Record<string, unknown> | null
+      if (bc) {
+        const flows = bc.user_flows as string[] | undefined
+        if (flows && flows.length > 0) {
+          lines.push("### User Flows")
+          for (const f of flows) {
+            lines.push(`- ${f}`)
+          }
+          lines.push("")
+        }
+        const acceptance = bc.acceptance_criteria as string[] | undefined
+        if (acceptance && acceptance.length > 0) {
+          lines.push("### Acceptance Criteria")
+          for (const a of acceptance) {
+            lines.push(`- ${a}`)
+          }
+          lines.push("")
+        }
+      }
+
+      const cc = s.code_contract as Record<string, unknown> | null
+      if (cc) {
+        const files = cc.files as Array<{ path: string; description?: string }> | undefined
+        if (files && files.length > 0) {
+          lines.push("### Files")
+          for (const f of files) {
+            lines.push(`- \`${f.path}\`${f.description ? ` — ${f.description}` : ""}`)
+          }
+          lines.push("")
+        }
+        const steps = cc.implementation_steps as string[] | undefined
+        if (steps && steps.length > 0) {
+          lines.push("### Implementation Steps")
+          for (let i = 0; i < steps.length; i++) {
+            lines.push(`${i + 1}. ${steps[i]}`)
+          }
+          lines.push("")
+        }
+        const pseudoCode = cc.pseudo_code as string | undefined
+        if (pseudoCode) {
+          lines.push("### Pseudo Code")
+          lines.push("```")
+          lines.push(pseudoCode)
+          lines.push("```")
+          lines.push("")
+        }
+      }
+
+      lines.push("---")
+      lines.push("")
+    }
+
+    const content = lines.join("\n")
+    const blob = new Blob([content], { type: "text/markdown" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `${projectName.replace(/[^a-zA-Z0-9]/g, "_")}_plan.md`
+    a.click()
+    URL.revokeObjectURL(url)
+    toast.success("Plan exported!")
+  }, [projectId, projectName, slices])
 
   // Determine pulse dot color from the latest event type
   const lastEvent = events[events.length - 1]
@@ -139,11 +223,8 @@ export function HeaderStats({
 
   return (
     <div className="glass-panel flex items-center justify-between rounded-lg border border-border px-4 py-2">
-      {/* Left: Brain viz + Agent status pulse + status text */}
+      {/* Left: Agent status pulse + status text */}
       <div className="flex items-center gap-3">
-        {/* Agent Brain Visualization */}
-        {activeBrain && <AgentBrainViz activeBrain={activeBrain} />}
-
         {/* Pulsing status dot */}
         <div className="relative flex items-center">
           <motion.div
@@ -180,14 +261,8 @@ export function HeaderStats({
         </div>
       </div>
 
-      {/* Center: Phase indicator + Live counters */}
+      {/* Center: Live counters */}
       <div className="flex items-center gap-4">
-        {/* Build Phase Indicator */}
-        {currentPhase && <BuildPhaseIndicator currentPhase={currentPhase} />}
-
-        {/* Separator */}
-        {currentPhase && <div className="h-4 w-px bg-border" />}
-
         {/* Lines of Code */}
         <div className="flex items-center gap-1.5">
           <Code className="h-3 w-3 text-foreground/60" />
@@ -232,6 +307,31 @@ export function HeaderStats({
           </>
         )}
         <ElapsedTimer elapsedRef={elapsedRef} />
+
+        {/* View Plan */}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 gap-1.5 px-2 text-xs text-electric-cyan hover:text-electric-cyan/80"
+          asChild
+        >
+          <Link href={`/projects/${projectId}/plan`}>
+            <LayoutGrid className="h-3 w-3" />
+            Plan
+          </Link>
+        </Button>
+
+        {/* Export Plan */}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 gap-1.5 px-2 text-xs text-muted-foreground hover:text-electric-cyan"
+          onClick={handleExportPlan}
+        >
+          <Download className="h-3 w-3" />
+          Export
+        </Button>
+
         {/* MCP Inspector toggle */}
         {onToggleMCPInspector && (
           <Button
@@ -251,13 +351,6 @@ export function HeaderStats({
             )}
           </Button>
         )}
-        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={toggleMute}>
-          {muted ? (
-            <VolumeX className="h-3.5 w-3.5 text-muted-foreground" />
-          ) : (
-            <Volume2 className="h-3.5 w-3.5 text-electric-cyan" />
-          )}
-        </Button>
         <ProjectImmersiveActions projectId={projectId} projectName={projectName} />
       </div>
     </div>

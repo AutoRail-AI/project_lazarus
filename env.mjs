@@ -46,6 +46,8 @@ export const env = createEnv({
     CODE_SYNAPSE_SKIP_JUSTIFY: z.enum(["true", "false"]).optional().transform((value) => value === "true"),
     // Workspaces
     WORKSPACES_ROOT: z.string().optional(),
+    // Local Build Workspace (replaces Daytona)
+    DEMO_WORKSPACE_ROOT: z.string().optional(),
     // Organization Settings
     ORGANIZATION_LIMIT: z.string().optional(),
     MEMBERSHIP_LIMIT: z.string().optional(),
@@ -112,6 +114,7 @@ export const env = createEnv({
     CODE_SYNAPSE_SKIP_JUSTIFY: process.env.CODE_SYNAPSE_SKIP_JUSTIFY,
     // Workspaces
     WORKSPACES_ROOT: process.env.WORKSPACES_ROOT,
+    DEMO_WORKSPACE_ROOT: process.env.DEMO_WORKSPACE_ROOT,
     NEXT_PUBLIC_DEMO_MODE: process.env.NEXT_PUBLIC_DEMO_MODE,
     // noVNC Browser Stream
     NOVNC_URL: process.env.NOVNC_URL,

@@ -1,23 +1,20 @@
 /**
- * Project resource cleanup — orchestrates teardown of Daytona sandboxes,
- * local workspaces, MCP processes, and BullMQ jobs.
+ * Project resource cleanup — orchestrates teardown of local workspaces,
+ * MCP processes, and BullMQ jobs.
  *
  * All functions are best-effort: they log warnings on failure and continue.
  */
 
 import { execSync } from "child_process"
-import { rm } from "fs/promises"
 import { supabase } from "@/lib/db"
 import type { Database } from "@/lib/db/types"
-import {
-  destroySandbox,
-  stopSandbox,
-} from "@/lib/daytona/runner"
 import {
   getProjectProcessingQueue,
   getSliceBuildQueue,
 } from "@/lib/queue"
+import { cleanupWorkspace } from "@/lib/workspace/local-workspace"
 import { getWorkspacePath } from "@/lib/workspaces/checkout"
+import { rm } from "fs/promises"
 import { logger } from "@/lib/utils/logger"
 
 type Project = Database["public"]["Tables"]["projects"]["Row"]
@@ -45,24 +42,17 @@ export async function cleanupProjectResources(projectId: string): Promise<void> 
     })
   }
 
-  // Extract sandbox_id from pipeline_checkpoint or metadata
   const checkpoint = project?.pipeline_checkpoint as Record<string, unknown> | null
-  const metadata = project?.metadata as Record<string, unknown> | null
-  const sandboxId =
-    (checkpoint?.sandbox_id as string | undefined) ??
-    (metadata?.daytona_sandbox_id as string | undefined)
   const buildJobId = project?.build_job_id ?? undefined
   const mcpUrl = checkpoint?.mcp_url as string | undefined
 
   // 2. Cancel BullMQ jobs
   await cancelBullMQJobs(projectId, buildJobId ?? undefined)
 
-  // 3. Destroy Daytona sandbox
-  if (sandboxId) {
-    await destroyDaytonaSandboxSafe(sandboxId)
-  }
+  // 3. Clean up demo workspace (local build workspace)
+  await cleanupDemoWorkspace(projectId)
 
-  // 4. Clean up local workspace
+  // 4. Clean up code-synapse local workspace
   await cleanupLocalWorkspace(projectId)
 
   // 5. Kill local MCP process
@@ -128,58 +118,30 @@ export async function cancelBullMQJobs(
 }
 
 /**
- * Destroy a Daytona sandbox. Best-effort wrapper around destroySandbox.
+ * Clean up the demo build workspace (local-workspace module).
  */
-async function destroyDaytonaSandboxSafe(sandboxId: string): Promise<void> {
+async function cleanupDemoWorkspace(projectId: string): Promise<void> {
   try {
-    await destroySandbox(sandboxId)
-    logger.info("[Cleanup] Destroyed Daytona sandbox", { sandboxId })
+    await cleanupWorkspace(projectId)
+    logger.info("[Cleanup] Removed demo workspace", { projectId })
   } catch (err: unknown) {
-    logger.warn("[Cleanup] Failed to destroy Daytona sandbox (best-effort)", {
-      sandboxId,
-      error: err instanceof Error ? err.message : "unknown",
-    })
-  }
-}
-
-/**
- * Stop (not delete) the Daytona sandbox for a project.
- * Used on pause — preserves sandbox for resume.
- */
-export async function stopDaytonaSandboxForProject(projectId: string): Promise<void> {
-  let sandboxId: string | undefined
-
-  try {
-    const { data } = await (supabase as any)
-      .from("projects")
-      .select("pipeline_checkpoint, metadata")
-      .eq("id", projectId)
-      .single() as { data: { pipeline_checkpoint: Record<string, unknown> | null; metadata: Record<string, unknown> | null } | null }
-
-    const checkpoint = data?.pipeline_checkpoint
-    const metadata = data?.metadata
-    sandboxId =
-      (checkpoint?.sandbox_id as string | undefined) ??
-      (metadata?.daytona_sandbox_id as string | undefined)
-  } catch (err: unknown) {
-    logger.warn("[Cleanup] Failed to fetch project for sandbox stop", {
+    logger.warn("[Cleanup] Failed to remove demo workspace (best-effort)", {
       projectId,
       error: err instanceof Error ? err.message : "unknown",
     })
-    return
   }
-
-  if (!sandboxId) {
-    logger.info("[Cleanup] No sandbox_id found for project, skipping stop", { projectId })
-    return
-  }
-
-  await stopSandbox(sandboxId)
-  logger.info("[Cleanup] Stopped Daytona sandbox for project", { projectId, sandboxId })
 }
 
 /**
- * Remove local workspace directory for a project.
+ * Stop workspace for project — no-op for local filesystem.
+ * Kept for backward compatibility with pipeline index exports.
+ */
+export async function stopWorkspaceForProject(_projectId: string): Promise<void> {
+  // No-op — local workspaces don't need to be "stopped"
+}
+
+/**
+ * Remove local workspace directory for a project (code-synapse checkout workspace).
  */
 export async function cleanupLocalWorkspace(projectId: string): Promise<void> {
   try {

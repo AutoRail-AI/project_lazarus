@@ -6,8 +6,8 @@ import type { Database, ProjectStatus } from "@/lib/db/types"
 type Project = Database["public"]["Tables"]["projects"]["Row"]
 type Slice = Database["public"]["Tables"]["vertical_slices"]["Row"]
 
-const ACTIVE_STATUSES: ProjectStatus[] = ["processing", "building", "paused"]
-const SLICE_STATUSES: ProjectStatus[] = ["ready", "building", "paused", "complete"]
+const ACTIVE_STATUSES: ProjectStatus[] = ["processing", "building", "paused", "failed"]
+const SLICE_STATUSES: ProjectStatus[] = ["ready", "building", "paused", "complete", "failed"]
 const POLL_INTERVAL = 3000
 
 interface UseProjectPollingOptions {

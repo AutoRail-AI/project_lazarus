@@ -18,7 +18,7 @@ export {
 
 export {
   cleanupProjectResources,
-  stopDaytonaSandboxForProject,
+  stopWorkspaceForProject,
   cancelBullMQJobs,
   cleanupLocalWorkspace,
   killLocalMcpProcess,

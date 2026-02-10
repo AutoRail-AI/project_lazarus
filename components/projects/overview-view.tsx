@@ -15,6 +15,7 @@ import {
   Clock,
   LayoutGrid,
   Pause,
+  Terminal,
 } from "lucide-react"
 import Link from "next/link"
 
@@ -33,6 +34,8 @@ interface OverviewViewProps {
   slices: Slice[]
   projectId: string
   onAction?: () => void
+  /** When set, shows a "View Build Log" button to switch back to Glass Brain */
+  onShowBuildLog?: () => void
 }
 
 const statusConfig = {
@@ -48,7 +51,7 @@ const statusConfig = {
 
 const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === "true"
 
-export function OverviewView({ project, slices, projectId, onAction }: OverviewViewProps) {
+export function OverviewView({ project, slices, projectId, onAction, onShowBuildLog }: OverviewViewProps) {
   const checkpoint = project.pipeline_checkpoint as PipelineCheckpoint | null
   const hasCheckpoint = !!(
     checkpoint &&
@@ -113,6 +116,12 @@ export function OverviewView({ project, slices, projectId, onAction }: OverviewV
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {onShowBuildLog && (
+            <Button size="sm" variant="outline" onClick={onShowBuildLog} className="gap-2">
+              <Terminal className="h-4 w-4" />
+              View Build Log
+            </Button>
+          )}
           {(project.status === "ready" || project.status === "complete") && (
             <Button size="sm" asChild className="bg-rail-fade hover:opacity-90 shadow-glow-purple">
               <Link href={`/projects/${projectId}/plan`} className="gap-2">

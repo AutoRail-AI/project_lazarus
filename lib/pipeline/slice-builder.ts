@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/db"
 import type { Database } from "@/lib/db/types"
+import { buildSliceInSandbox } from "@/lib/demo"
 import { advancePipelineStep, setErrorContext } from "./orchestrator"
 import { MAX_SLICE_RETRIES } from "./types"
 
@@ -142,24 +143,16 @@ async function buildSlice(
     metadata: { pipeline_event: "slice_build_start" },
   })
 
-  // POST to OpenHands build route with slice contracts
-  try {
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
-    const res = await fetch(`${baseUrl}/api/projects/${projectId}/slices/${sliceId}/build`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        behavioral_contract: slice?.behavioral_contract,
-        code_contract: slice?.code_contract,
-      }),
-    })
-
-    if (!res.ok) {
-      throw new Error(`Build request failed with status ${res.status}`)
-    }
-  } catch (err: unknown) {
+  // Fire-and-forget — don't await so the API returns immediately.
+  // Errors are caught and persisted to DB asynchronously.
+  buildSliceInSandbox(
+    projectId,
+    sliceId,
+    slice?.name ?? sliceId,
+    _userId,
+  ).catch(async (err: unknown) => {
     const message = err instanceof Error ? err.message : "Unknown build error"
-    console.error(`[SliceBuilder] Failed to start build for slice ${sliceId}:`, message)
+    console.error(`[SliceBuilder] Build failed for slice ${sliceId}:`, message)
 
     await (supabase as any)
       .from("vertical_slices")
@@ -173,7 +166,7 @@ async function buildSlice(
       retryable: true,
       stack: err instanceof Error ? err.stack : undefined,
     })
-  }
+  })
 }
 
 /**

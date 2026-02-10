@@ -1,7 +1,9 @@
 "use client"
 
 import { useEffect, useRef } from "react"
-import { Activity, CheckCircle2, Layers, Zap } from "lucide-react"
+import { Activity, ArrowLeft, CheckCircle2, Layers, Zap } from "lucide-react"
+import Link from "next/link"
+import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import type { SliceStatus } from "@/lib/db/types"
 import type { Project, Slice } from "./plan-types"
@@ -117,8 +119,16 @@ export function PlanStatsBar({ project, slices }: PlanStatsBarProps) {
           ))}
         </div>
 
-        <div className="text-sm text-muted-foreground">
-          <span className="font-semibold text-foreground">{completionPct}%</span> done
+        <div className="flex items-center gap-3">
+          <div className="text-sm text-muted-foreground">
+            <span className="font-semibold text-foreground">{completionPct}%</span> done
+          </div>
+          <Button variant="ghost" size="sm" className="h-7 gap-1.5 px-2 text-xs text-electric-cyan hover:text-electric-cyan/80" asChild>
+            <Link href={`/projects/${project.id}`}>
+              <ArrowLeft className="h-3 w-3" />
+              Back to Project
+            </Link>
+          </Button>
         </div>
       </div>
 

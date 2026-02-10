@@ -11,13 +11,13 @@
  *        -> Agent writes code, runs tests, self-heals iteratively
  *        -> On completion: onSliceComplete()
  *
- * 2. **Gemini + Daytona (fallback)** — Batch pipeline:
+ * 2. **Gemini + Local Workspace (fallback)** — Batch pipeline:
  *    buildSliceInSandbox()
- *      -> getOrCreateSandbox() (Daytona)
+ *      -> getOrCreateSandbox() (local fs)
  *      -> generateSliceCode() (Gemini) -> writeFiles() -> build
  *      -> generateSliceTests() (Gemini) -> writeFiles() -> test
  *      -> [self-heal loop if tests fail]
- *      -> preview URL -> screenshots -> confidence calc -> complete
+ *      -> dev server -> screenshots -> confidence calc -> complete
  *
  * 3. **Mock events (last resort)** — playDemoBuild()
  *
@@ -31,7 +31,11 @@ import { calculateConfidence } from "@/lib/ai/confidence-explainer"
 import type { TestResults } from "@/lib/ai/confidence-explainer"
 import { onSliceComplete } from "@/lib/pipeline"
 import { CONFIDENCE_THRESHOLD } from "@/lib/pipeline/types"
-import { executeCommand, startBackgroundProcess, getPreviewLink } from "@/lib/daytona/runner"
+import {
+  executeCommand,
+  startDevServer,
+  writeEnvLocal,
+} from "@/lib/workspace/local-workspace"
 import {
   getOrCreateSandbox,
   snapshotDirectoryTree,
@@ -46,6 +50,9 @@ import {
 import type { SliceContract, FileOutput } from "./gemini-codegen"
 import { playDemoBuild } from "./event-player"
 import { isOpenHandsAvailable, executeSliceBuild } from "@/lib/openhands"
+import type { ChildProcess } from "child_process"
+import { mkdirSync } from "fs"
+import { join } from "path"
 
 /* -------------------------------------------------------------------------- */
 /*  Constants                                                                  */
@@ -53,7 +60,6 @@ import { isOpenHandsAvailable, executeSliceBuild } from "@/lib/openhands"
 
 const MAX_SELF_HEAL_RETRIES = 3
 const PACED_DELAY_MS = 600 // minimum delay between fast events
-const APP_DIR = "/home/daytona/app"
 
 /* -------------------------------------------------------------------------- */
 /*  Helpers                                                                    */
@@ -61,11 +67,14 @@ const APP_DIR = "/home/daytona/app"
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-/** Running line counter for stats */
-let totalLinesWritten = 0
-let totalTestsPassed = 0
-let totalTestsRun = 0
-let selfHealCount = 0
+/** Per-build stats — created fresh each invocation to avoid global state. */
+interface BuildStats {
+  totalLinesWritten: number
+  totalTestsPassed: number
+  totalTestsRun: number
+  selfHealCount: number
+  startTime: number
+}
 
 /**
  * Emit a paced event into agent_events and optionally update slice confidence.
@@ -212,12 +221,47 @@ async function getPreviousSliceFiles(
     .filter((f): f is string => !!f)
 }
 
+/**
+ * Safely kill a dev server child process.
+ */
+function killDevServer(devServer: ChildProcess | null): void {
+  if (!devServer) return
+  try {
+    // Kill the process group (negative PID kills the group)
+    if (devServer.pid) {
+      process.kill(-devServer.pid, "SIGTERM")
+    }
+  } catch {
+    // Process may already be dead
+    try {
+      devServer.kill("SIGKILL")
+    } catch {
+      // Ignore
+    }
+  }
+}
+
+/**
+ * Read build_env_vars from project metadata.
+ */
+async function getBuildEnvVars(projectId: string): Promise<Record<string, string>> {
+  const { data: project } = await (supabase as any)
+    .from("projects")
+    .select("metadata")
+    .eq("id", projectId)
+    .single() as { data: { metadata: Record<string, unknown> | null } | null }
+
+  const metadata = project?.metadata
+  const buildEnvVars = metadata?.build_env_vars as Record<string, string> | undefined
+  return buildEnvVars ?? {}
+}
+
 /* -------------------------------------------------------------------------- */
 /*  Main entry point                                                           */
 /* -------------------------------------------------------------------------- */
 
 /**
- * Build a single slice using OpenHands (primary) or Gemini+Daytona (fallback).
+ * Build a single slice using OpenHands (primary) or Gemini+Local Workspace (fallback).
  * Streams events through agent_events for the Glass Brain dashboard.
  *
  * This is fire-and-forget — called from the build route and runs as a
@@ -225,8 +269,8 @@ async function getPreviousSliceFiles(
  *
  * Safety net chain (demo mode):
  *   1. OpenHands + Gemini via LangGraph (full agentic loop)
- *   2. Gemini + Daytona batch pipeline (if OpenHands unavailable)
- *   3. playDemoBuild() mock events (if Gemini/Daytona fails)
+ *   2. Gemini + Local Workspace batch pipeline (if OpenHands unavailable)
+ *   3. playDemoBuild() mock events (if Gemini/Local fails)
  *   4. Force onSliceComplete() (if mock also fails)
  */
 export async function buildSliceInSandbox(
@@ -276,26 +320,27 @@ export async function buildSliceInSandbox(
       return
     } catch (openHandsErr: unknown) {
       console.error(
-        `[DemoSliceBuilder] OpenHands build failed for "${sliceName}", falling back to Gemini+Daytona:`,
+        `[DemoSliceBuilder] OpenHands build failed for "${sliceName}", falling back to Gemini+Local:`,
         openHandsErr instanceof Error ? openHandsErr.message : openHandsErr
       )
-      // Fall through to Gemini+Daytona pipeline
+      // Fall through to Gemini+Local pipeline
     }
   } else {
-    console.log(`[DemoSliceBuilder] OpenHands not available — using Gemini+Daytona pipeline for "${sliceName}"`)
+    console.log(`[DemoSliceBuilder] OpenHands not available — using Gemini+Local pipeline for "${sliceName}"`)
   }
 
   // ──────────────────────────────────────────────────────────────────────
-  // FALLBACK PATH: Gemini + Daytona batch pipeline
+  // FALLBACK PATH: Gemini + Local Workspace batch pipeline
   // ──────────────────────────────────────────────────────────────────────
 
-  // Reset counters for this slice build
-  totalLinesWritten = 0
-  totalTestsPassed = 0
-  totalTestsRun = 0
-  selfHealCount = 0
-
-  const startTime = Date.now()
+  // Fresh per-build stats (no global mutable state)
+  const stats: BuildStats = {
+    totalLinesWritten: 0,
+    totalTestsPassed: 0,
+    totalTestsRun: 0,
+    selfHealCount: 0,
+    startTime: Date.now(),
+  }
 
   try {
     // ──────────────────────────────────────────────────────────────────────
@@ -329,24 +374,24 @@ export async function buildSliceInSandbox(
     )
 
     // ──────────────────────────────────────────────────────────────────────
-    // STEP 2: Get or create sandbox
+    // STEP 2: Get or create workspace
     // ──────────────────────────────────────────────────────────────────────
     await emitEvent(
       projectId,
       sliceId,
       "thought",
-      "Setting up the build environment — provisioning a sandboxed Next.js workspace with the full-stack boilerplate (React 19, TypeScript, Mongoose, shadcn/ui, Playwright).",
+      "Setting up the build environment — provisioning a local Next.js workspace with the full-stack boilerplate (React 19, TypeScript, Mongoose, shadcn/ui, Playwright).",
       { category: "Implementing" }
     )
 
-    const { sandboxId, isNew } = await getOrCreateSandbox(projectId)
+    const { sandboxId: workspacePath, isNew } = await getOrCreateSandbox(projectId)
 
     if (isNew) {
       await emitEvent(
         projectId,
         sliceId,
         "thought",
-        "Fresh sandbox provisioned. Boilerplate cloned, dependencies installed, Playwright browsers configured. The project is ready for code generation.",
+        "Fresh workspace provisioned. Boilerplate cloned, dependencies installed, Playwright browsers configured. The project is ready for code generation.",
         { category: "Implementing" }
       )
     } else {
@@ -354,7 +399,22 @@ export async function buildSliceInSandbox(
         projectId,
         sliceId,
         "thought",
-        "Reconnected to existing sandbox — previous slices' code is already in place. Building incrementally on the existing codebase.",
+        "Reconnected to existing workspace — previous slices' code is already in place. Building incrementally on the existing codebase.",
+        { category: "Implementing" }
+      )
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // STEP 2b: Write .env.local with user's build env vars
+    // ──────────────────────────────────────────────────────────────────────
+    const buildEnvVars = await getBuildEnvVars(projectId)
+    if (Object.keys(buildEnvVars).length > 0) {
+      writeEnvLocal(workspacePath, buildEnvVars)
+      await emitEvent(
+        projectId,
+        sliceId,
+        "thought",
+        `Configured build environment with ${Object.keys(buildEnvVars).length} environment variable(s).`,
         { category: "Implementing" }
       )
     }
@@ -362,7 +422,7 @@ export async function buildSliceInSandbox(
     // ──────────────────────────────────────────────────────────────────────
     // STEP 3: Snapshot directory tree for Gemini context
     // ──────────────────────────────────────────────────────────────────────
-    const boilerplateTree = await snapshotDirectoryTree(sandboxId)
+    const boilerplateTree = await snapshotDirectoryTree(workspacePath)
     const previousFiles = await getPreviousSliceFiles(projectId, sliceId)
 
     // ──────────────────────────────────────────────────────────────────────
@@ -392,7 +452,7 @@ export async function buildSliceInSandbox(
     // Emit code_write events for each generated file
     for (const file of codeResult.files) {
       const lineCount = file.content.split("\n").length
-      totalLinesWritten += lineCount
+      stats.totalLinesWritten += lineCount
 
       // Show a code preview (first meaningful lines)
       const previewLines = file.content
@@ -412,9 +472,9 @@ export async function buildSliceInSandbox(
     }
 
     // ──────────────────────────────────────────────────────────────────────
-    // STEP 5: Write files to sandbox
+    // STEP 5: Write files to workspace
     // ──────────────────────────────────────────────────────────────────────
-    await writeFiles(sandboxId, codeResult.files)
+    await writeFiles(workspacePath, codeResult.files)
 
     // ──────────────────────────────────────────────────────────────────────
     // STEP 6: Build check
@@ -430,7 +490,7 @@ export async function buildSliceInSandbox(
     let buildOutput = ""
     let buildSuccess = false
     try {
-      buildOutput = await executeCommand(sandboxId, "pnpm build 2>&1 || true", APP_DIR)
+      buildOutput = executeCommand("pnpm build 2>&1 || true", workspacePath)
       buildSuccess = !buildOutput.includes("error TS") && !buildOutput.includes("Build error")
 
       if (buildSuccess) {
@@ -478,7 +538,7 @@ export async function buildSliceInSandbox(
 
     for (const file of testResult.files) {
       const lineCount = file.content.split("\n").length
-      totalLinesWritten += lineCount
+      stats.totalLinesWritten += lineCount
 
       const previewLines = file.content
         .split("\n")
@@ -495,8 +555,8 @@ export async function buildSliceInSandbox(
       )
     }
 
-    // Write test files to sandbox
-    await writeFiles(sandboxId, testResult.files)
+    // Write test files to workspace
+    await writeFiles(workspacePath, testResult.files)
 
     // ──────────────────────────────────────────────────────────────────────
     // STEP 8: Run Vitest
@@ -514,10 +574,9 @@ export async function buildSliceInSandbox(
     let vitestOutput = ""
     let vitestResults = { passed: 0, failed: 0, total: 0, errors: "" }
     try {
-      vitestOutput = await executeCommand(
-        sandboxId,
+      vitestOutput = executeCommand(
         "npx vitest run --reporter=verbose 2>&1 || true",
-        APP_DIR
+        workspacePath
       )
       vitestResults = parseVitestResults(vitestOutput)
     } catch (err: unknown) {
@@ -525,8 +584,8 @@ export async function buildSliceInSandbox(
       vitestResults = { passed: 0, failed: 1, total: 1, errors: vitestOutput.slice(0, 1000) }
     }
 
-    totalTestsPassed += vitestResults.passed
-    totalTestsRun += vitestResults.total
+    stats.totalTestsPassed += vitestResults.passed
+    stats.totalTestsRun += vitestResults.total
 
     const testsPassed = vitestResults.failed === 0 && vitestResults.passed > 0
 
@@ -567,7 +626,7 @@ export async function buildSliceInSandbox(
     }
 
     for (let attempt = 0; attempt < MAX_SELF_HEAL_RETRIES && needsHealing; attempt++) {
-      selfHealCount++
+      stats.selfHealCount++
 
       await setSliceStatus(sliceId, "self_healing")
 
@@ -622,7 +681,7 @@ export async function buildSliceInSandbox(
       const currentFileContents: FileOutput[] = []
       for (const file of allFiles) {
         try {
-          const content = await readFile(sandboxId, file.path)
+          const content = await readFile(workspacePath, file.path)
           currentFileContents.push({ path: file.path, content })
         } catch {
           // File might not exist if build failed before writing
@@ -646,7 +705,7 @@ export async function buildSliceInSandbox(
       // Emit the fix
       for (const fixFile of healResult.files) {
         const lineCount = fixFile.content.split("\n").length
-        totalLinesWritten += lineCount
+        stats.totalLinesWritten += lineCount
 
         await emitEvent(
           projectId,
@@ -660,7 +719,7 @@ export async function buildSliceInSandbox(
 
       // Write fixed files
       if (healResult.files.length > 0) {
-        await writeFiles(sandboxId, healResult.files)
+        await writeFiles(workspacePath, healResult.files)
 
         // Update allFiles with fixes
         for (const fix of healResult.files) {
@@ -675,7 +734,7 @@ export async function buildSliceInSandbox(
 
       // Rebuild
       try {
-        buildOutput = await executeCommand(sandboxId, "pnpm build 2>&1 || true", APP_DIR)
+        buildOutput = executeCommand("pnpm build 2>&1 || true", workspacePath)
         buildSuccess = !buildOutput.includes("error TS") && !buildOutput.includes("Build error")
       } catch {
         buildSuccess = false
@@ -684,10 +743,9 @@ export async function buildSliceInSandbox(
       // Retest
       if (buildSuccess) {
         try {
-          vitestOutput = await executeCommand(
-            sandboxId,
+          vitestOutput = executeCommand(
             "npx vitest run --reporter=verbose 2>&1 || true",
-            APP_DIR
+            workspacePath
           )
           vitestResults = parseVitestResults(vitestOutput)
         } catch (err: unknown) {
@@ -695,8 +753,8 @@ export async function buildSliceInSandbox(
           vitestResults = { passed: 0, failed: 1, total: 1, errors: vitestOutput.slice(0, 1000) }
         }
 
-        totalTestsPassed = vitestResults.passed
-        totalTestsRun = vitestResults.total
+        stats.totalTestsPassed = vitestResults.passed
+        stats.totalTestsRun = vitestResults.total
 
         if (vitestResults.failed === 0 && vitestResults.passed > 0) {
           await emitEvent(
@@ -738,23 +796,24 @@ export async function buildSliceInSandbox(
       projectId,
       sliceId,
       "thought",
-      "Starting the development server for browser-based verification. The app will be accessible via a live preview URL.",
+      "Starting the development server for browser-based verification. The app will be accessible at http://localhost:3000.",
       { category: "Testing" },
       0.05
     )
 
+    let devServer: ChildProcess | null = null
     try {
-      await startBackgroundProcess(sandboxId, "dev-server", "pnpm dev", APP_DIR)
+      devServer = startDevServer(workspacePath)
 
       // Wait for dev server to be ready (poll with curl)
       let serverReady = false
       for (let i = 0; i < 30; i++) {
         await sleep(2000)
         try {
-          const result = await executeCommand(
-            sandboxId,
+          const result = executeCommand(
             "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000 || echo 'waiting'",
-            APP_DIR
+            workspacePath,
+            5000
           )
           if (result.includes("200") || result.includes("307") || result.includes("302")) {
             serverReady = true
@@ -766,15 +825,14 @@ export async function buildSliceInSandbox(
       }
 
       if (serverReady) {
-        // Get preview URL
-        const preview = await getPreviewLink(sandboxId, 3000)
+        const previewUrl = "http://localhost:3000"
 
         await emitEvent(
           projectId,
           sliceId,
           "app_start",
-          `Application is live! Verifying at ${preview.url}`,
-          { url: preview.url, port: 3000 }
+          `Application is live! Verifying at ${previewUrl}`,
+          { url: previewUrl, port: 3000 }
         )
 
         // ──────────────────────────────────────────────────────────────────
@@ -791,18 +849,18 @@ export async function buildSliceInSandbox(
         let playwrightOutput = ""
         let e2eResults = { passed: 0, failed: 0, total: 0, errors: "" }
         try {
-          playwrightOutput = await executeCommand(
-            sandboxId,
+          playwrightOutput = executeCommand(
             "npx playwright test --reporter=list 2>&1 || true",
-            APP_DIR
+            workspacePath,
+            180_000
           )
           e2eResults = parsePlaywrightResults(playwrightOutput)
         } catch (err: unknown) {
           playwrightOutput = err instanceof Error ? err.message : String(err)
         }
 
-        totalTestsPassed += e2eResults.passed
-        totalTestsRun += e2eResults.total
+        stats.totalTestsPassed += e2eResults.passed
+        stats.totalTestsRun += e2eResults.total
 
         if (e2eResults.passed > 0) {
           await emitEvent(
@@ -826,14 +884,19 @@ export async function buildSliceInSandbox(
         }
 
         // ──────────────────────────────────────────────────────────────────
-        // STEP 12: Take screenshots
+        // STEP 12: Take screenshots (saved to workspace for UI access)
         // ──────────────────────────────────────────────────────────────────
         try {
-          // Try to generate a screenshot via Playwright
-          await executeCommand(
-            sandboxId,
-            `npx playwright screenshot --wait-for-timeout=3000 http://127.0.0.1:3000 /tmp/screenshots/home.png 2>&1 || true`,
-            APP_DIR
+          const screenshotDir = join(workspacePath, ".lazarus", "screenshots")
+          mkdirSync(screenshotDir, { recursive: true })
+          const screenshotFile = `${sliceId}_home.png`
+          const screenshotPath = join(screenshotDir, screenshotFile)
+          const workspaceRelPath = `.lazarus/screenshots/${screenshotFile}`
+
+          executeCommand(
+            `npx playwright screenshot --wait-for-timeout=3000 http://127.0.0.1:3000 ${screenshotPath} 2>&1 || true`,
+            workspacePath,
+            30_000
           )
 
           await emitEvent(
@@ -841,7 +904,7 @@ export async function buildSliceInSandbox(
             sliceId,
             "screenshot",
             `Application homepage rendered successfully — modern UI with ${sliceName} feature integrated.`,
-            { url: "/", viewport: "1280x720", path: "/tmp/screenshots/home.png", preview_url: preview.url },
+            { url: "/", viewport: "1280x720", workspace_path: workspaceRelPath, preview_url: previewUrl },
             0.08
           )
         } catch {
@@ -850,8 +913,8 @@ export async function buildSliceInSandbox(
             projectId,
             sliceId,
             "screenshot",
-            `Live application available at ${preview.url} — ${sliceName} feature is visible and interactive.`,
-            { url: preview.url, viewport: "1280x720" },
+            `Live application available at ${previewUrl} — ${sliceName} feature is visible and interactive.`,
+            { url: previewUrl, viewport: "1280x720" },
             0.08
           )
         }
@@ -880,6 +943,9 @@ export async function buildSliceInSandbox(
         { category: "Testing" },
         0.05
       )
+    } finally {
+      // Always kill the dev server when done
+      killDevServer(devServer)
     }
 
     // ──────────────────────────────────────────────────────────────────────
@@ -887,7 +953,7 @@ export async function buildSliceInSandbox(
     // ──────────────────────────────────────────────────────────────────────
     const testResultsForCalc: TestResults = {
       unit: { passed: vitestResults.passed, total: Math.max(vitestResults.total, 1) },
-      e2e: { passed: totalTestsPassed - vitestResults.passed, total: Math.max(totalTestsRun - vitestResults.total, 1) },
+      e2e: { passed: stats.totalTestsPassed - vitestResults.passed, total: Math.max(stats.totalTestsRun - vitestResults.total, 1) },
       visual: { matchPercentage: 80 },
       behavioral: { matchPercentage: 85 },
       video: { similarity: 0.75 },
@@ -911,14 +977,14 @@ export async function buildSliceInSandbox(
         projectId,
         sliceId,
         "confidence_update",
-        `Final confidence: ${(targetScore * 100).toFixed(0)}% — ${totalTestsPassed} tests passed, ${totalLinesWritten} lines of code generated, ${selfHealCount} self-heal cycle(s) completed.`,
+        `Final confidence: ${(targetScore * 100).toFixed(0)}% — ${stats.totalTestsPassed} tests passed, ${stats.totalLinesWritten} lines of code generated, ${stats.selfHealCount} self-heal cycle(s) completed.`,
         {
           final_confidence: targetScore,
-          lines_of_code: totalLinesWritten,
-          tests_passed: totalTestsPassed,
-          tests_total: totalTestsRun,
-          self_heals: selfHealCount,
-          time_elapsed: Math.round((Date.now() - startTime) / 1000),
+          lines_of_code: stats.totalLinesWritten,
+          tests_passed: stats.totalTestsPassed,
+          tests_total: stats.totalTestsRun,
+          self_heals: stats.selfHealCount,
+          time_elapsed: Math.round((Date.now() - stats.startTime) / 1000),
         },
         remainingDelta
       )
@@ -944,20 +1010,20 @@ export async function buildSliceInSandbox(
     // ──────────────────────────────────────────────────────────────────────
     // STEP 14: Complete the slice
     // ──────────────────────────────────────────────────────────────────────
-    const elapsed = Math.round((Date.now() - startTime) / 1000)
+    const elapsed = Math.round((Date.now() - stats.startTime) / 1000)
 
     await emitEvent(
       projectId,
       sliceId,
       "thought",
-      `Transmutation complete for "${sliceName}" — ${totalLinesWritten} lines of production code, ${totalTestsPassed} tests passing, built in ${elapsed}s. Moving to the next slice.`,
+      `Transmutation complete for "${sliceName}" — ${stats.totalLinesWritten} lines of production code, ${stats.totalTestsPassed} tests passing, built in ${elapsed}s. Moving to the next slice.`,
       {
         category: "Planning",
         pipeline_event: "slice_build_complete",
         stats: {
-          lines_of_code: totalLinesWritten,
-          tests_passed: totalTestsPassed,
-          self_heals: selfHealCount,
+          lines_of_code: stats.totalLinesWritten,
+          tests_passed: stats.totalTestsPassed,
+          self_heals: stats.selfHealCount,
           time_seconds: elapsed,
         },
       }
@@ -967,7 +1033,7 @@ export async function buildSliceInSandbox(
 
     console.log(
       `[DemoSliceBuilder] Slice "${sliceName}" (${sliceId}) completed in ${elapsed}s — ` +
-        `${totalLinesWritten} lines, ${totalTestsPassed} tests, ${selfHealCount} heals`
+        `${stats.totalLinesWritten} lines, ${stats.totalTestsPassed} tests, ${stats.selfHealCount} heals`
     )
   } catch (error: unknown) {
     // ──────────────────────────────────────────────────────────────────────

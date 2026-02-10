@@ -1,8 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useCallback, useState } from "react"
 import { motion } from "framer-motion"
-import { CheckCircle2, Download, FileText, LayoutGrid, Zap } from "lucide-react"
+import { AlertCircle, CheckCircle2, Download, FileText, LayoutGrid, RefreshCw, Zap } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { BreathingGlow } from "@/components/ai/glass-brain/ambient-effects"
 import { SliceCard } from "@/components/slices/slice-card"
@@ -11,7 +11,7 @@ import { ProjectImmersiveActions } from "./project-immersive-actions"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import Link from "next/link"
-import type { Database } from "@/lib/db/types"
+import type { Database, ProjectStatus } from "@/lib/db/types"
 
 type Project = Database["public"]["Tables"]["projects"]["Row"]
 type Slice = Database["public"]["Tables"]["vertical_slices"]["Row"]
@@ -20,6 +20,7 @@ interface SliceReviewViewProps {
   projectId: string
   project: Project
   slices: Slice[]
+  projectStatus?: ProjectStatus
   onBuildAll: () => void
 }
 
@@ -27,10 +28,14 @@ export function SliceReviewView({
   projectId,
   project,
   slices,
+  projectStatus,
   onBuildAll,
 }: SliceReviewViewProps) {
   const [isBuildingAll, setIsBuildingAll] = useState(false)
+  const [isRetrying, setIsRetrying] = useState(false)
   const [viewMode, setViewMode] = useState<"report" | "grid">("report")
+
+  const isFailed = projectStatus === "failed"
 
   const handleBuildAll = async () => {
     if (isBuildingAll) return
@@ -53,6 +58,27 @@ export function SliceReviewView({
     }
   }
 
+  const handleRetryBuild = useCallback(async () => {
+    if (isRetrying) return
+    setIsRetrying(true)
+    try {
+      const res = await fetch(`/api/projects/${projectId}/build?fresh=true`, {
+        method: "POST",
+      })
+      if (!res.ok) {
+        const data = (await res.json()) as { error?: string }
+        throw new Error(data.error ?? "Failed to restart build")
+      }
+      toast.success("Build pipeline restarting from scratch")
+      onBuildAll()
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Something went wrong"
+      toast.error(message)
+    } finally {
+      setIsRetrying(false)
+    }
+  }, [isRetrying, projectId, onBuildAll])
+
   return (
     <BreathingGlow confidence={0.5} className="relative flex h-full flex-col gap-4 p-4">
       {/* Header */}
@@ -63,9 +89,16 @@ export function SliceReviewView({
         transition={{ duration: 0.3 }}
       >
         <div className="flex items-center gap-3">
-          <CheckCircle2 className="h-5 w-5 text-success" />
-          <span className="font-grotesk text-sm font-semibold text-foreground">
-            Analysis Complete
+          {isFailed ? (
+            <AlertCircle className="h-5 w-5 text-destructive" />
+          ) : (
+            <CheckCircle2 className="h-5 w-5 text-success" />
+          )}
+          <span className={cn(
+            "font-grotesk text-sm font-semibold",
+            isFailed ? "text-destructive" : "text-foreground"
+          )}>
+            {isFailed ? "Build Failed" : "Analysis Complete"}
           </span>
           <div className="ml-3 flex items-center rounded-lg border border-border bg-card/30 p-0.5">
             <button
@@ -127,21 +160,39 @@ export function SliceReviewView({
         transition={{ delay: 0.15, duration: 0.3 }}
       >
         <p className="text-center text-sm text-muted-foreground max-w-lg">
-          {slices.length} vertical slice{slices.length !== 1 ? "s" : ""} generated.
-          Ready to build your modernized application.
+          {isFailed
+            ? "The build pipeline encountered an error. You can retry from scratch — all slices will be reset and rebuilt."
+            : `${slices.length} vertical slice${slices.length !== 1 ? "s" : ""} generated. Ready to build your modernized application.`}
         </p>
-        <Button
-          size="lg"
-          onClick={handleBuildAll}
-          disabled={isBuildingAll || slices.length === 0}
-          className={cn(
-            "bg-rail-fade text-white hover:opacity-90 shadow-glow-purple",
-            "font-grotesk font-semibold tracking-wide"
+        <div className="flex items-center gap-3">
+          {isFailed ? (
+            <Button
+              size="lg"
+              onClick={handleRetryBuild}
+              disabled={isRetrying}
+              className={cn(
+                "border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/20",
+                "font-grotesk font-semibold tracking-wide"
+              )}
+            >
+              <RefreshCw className={cn("mr-2 h-4 w-4", isRetrying && "animate-spin")} />
+              {isRetrying ? "Restarting..." : "Retry Build from Scratch"}
+            </Button>
+          ) : (
+            <Button
+              size="lg"
+              onClick={handleBuildAll}
+              disabled={isBuildingAll || slices.length === 0}
+              className={cn(
+                "bg-rail-fade text-white hover:opacity-90 shadow-glow-purple",
+                "font-grotesk font-semibold tracking-wide"
+              )}
+            >
+              <Zap className={cn("mr-2 h-4 w-4", isBuildingAll && "animate-pulse")} />
+              {isBuildingAll ? "Starting Build..." : "Approve & Build All Slices"}
+            </Button>
           )}
-        >
-          <Zap className={cn("mr-2 h-4 w-4", isBuildingAll && "animate-pulse")} />
-          {isBuildingAll ? "Starting Build..." : "Approve & Build All Slices"}
-        </Button>
+        </div>
       </motion.div>
 
       {/* Content — Report or Grid */}

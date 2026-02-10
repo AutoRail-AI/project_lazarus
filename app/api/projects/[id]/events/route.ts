@@ -223,14 +223,17 @@ export async function GET(
     const { searchParams } = new URL(req.url)
     const after = searchParams.get("after")
 
+    // When fetching incrementally (after param), use a reasonable limit.
+    // When fetching the full history (no after param — e.g. audit/review), return all events.
     let query = (supabase.from("agent_events") as any)
       .select("*")
       .eq("project_id", projectId)
       .order("created_at", { ascending: true })
-      .limit(100)
 
     if (after) {
-      query = query.gt("created_at", after)
+      query = query.gt("created_at", after).limit(200)
+    } else {
+      query = query.limit(5000)
     }
 
     const { data: events, error } = await query as { data: unknown[] | null; error: { message: string } | null }

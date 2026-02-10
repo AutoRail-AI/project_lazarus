@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo } from "react"
+import { useMemo, useState } from "react"
 import { AnimatePresence, motion } from "framer-motion"
 import { cn } from "@/lib/utils"
 import type { AgentEvent } from "@/hooks/use-agent-events"
@@ -11,12 +11,28 @@ import type { AgentEvent } from "@/hooks/use-agent-events"
 
 type ThoughtCategory = "Planning" | "Implementing" | "Testing" | "Debugging" | "Healing"
 
+const ALL_CATEGORIES: ThoughtCategory[] = [
+  "Planning",
+  "Implementing",
+  "Testing",
+  "Debugging",
+  "Healing",
+]
+
 const CATEGORY_STYLES: Record<ThoughtCategory, string> = {
   Planning: "bg-rail-purple/20 text-quantum-violet",
   Implementing: "bg-electric-cyan/15 text-electric-cyan",
   Testing: "bg-warning/15 text-warning",
   Debugging: "bg-error/15 text-error",
   Healing: "bg-rail-purple/15 text-quantum-violet",
+}
+
+const CATEGORY_ACTIVE_STYLES: Record<ThoughtCategory, string> = {
+  Planning: "bg-quantum-violet/30 text-quantum-violet border-quantum-violet/40",
+  Implementing: "bg-electric-cyan/25 text-electric-cyan border-electric-cyan/40",
+  Testing: "bg-warning/25 text-warning border-warning/40",
+  Debugging: "bg-error/25 text-error border-error/40",
+  Healing: "bg-rail-purple/25 text-quantum-violet border-quantum-violet/40",
 }
 
 function detectCategory(event: AgentEvent): ThoughtCategory {
@@ -65,7 +81,7 @@ function ThoughtCard({
       exit={{ opacity: 0, y: 16, scale: 0.95 }}
       transition={{ duration: 0.25 }}
       className={cn(
-        "rounded-lg border bg-card/30 p-3",
+        "rounded-lg border bg-card/30 p-3 shrink-0",
         isSelfHeal
           ? "border-rail-purple/40 glow-purple"
           : "border-border",
@@ -120,6 +136,8 @@ interface ThoughtsPaneProps {
 }
 
 export function ThoughtsPane({ events, healSpotlight = false }: ThoughtsPaneProps) {
+  const [activeFilter, setActiveFilter] = useState<ThoughtCategory | null>(null)
+
   // Filter for thoughts and self_heal events, reverse chronological
   const thoughts = useMemo(
     () =>
@@ -129,27 +147,85 @@ export function ThoughtsPane({ events, healSpotlight = false }: ThoughtsPaneProp
     [events]
   )
 
+  // Compute category counts for filter badges
+  const categoryCounts = useMemo(() => {
+    const counts: Record<ThoughtCategory, number> = {
+      Planning: 0,
+      Implementing: 0,
+      Testing: 0,
+      Debugging: 0,
+      Healing: 0,
+    }
+    for (const t of thoughts) {
+      const cat = detectCategory(t)
+      counts[cat]++
+    }
+    return counts
+  }, [thoughts])
+
+  // Apply filter
+  const filteredThoughts = useMemo(() => {
+    if (!activeFilter) return thoughts
+    return thoughts.filter((t) => detectCategory(t) === activeFilter)
+  }, [thoughts, activeFilter])
+
+  // Only show categories that have events
+  const visibleCategories = ALL_CATEGORIES.filter((c) => categoryCounts[c] > 0)
+
   return (
-    <div className="glass-panel flex flex-col overflow-hidden rounded-lg border border-border">
+    <div className="flex h-full flex-col overflow-hidden rounded-lg border border-border glass-panel">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-border px-3 py-2">
+      <div className="flex items-center justify-between border-b border-border px-3 py-2 shrink-0">
         <span className="font-grotesk text-sm font-semibold text-foreground">
           The Thoughts
         </span>
         <span className="font-mono text-[10px] text-muted-foreground">
-          {thoughts.length}
+          {filteredThoughts.length}{activeFilter ? `/${thoughts.length}` : ""}
         </span>
       </div>
 
-      {/* Thought cards */}
-      <div className="flex-1 space-y-2 overflow-y-auto p-3">
-        {thoughts.length === 0 ? (
+      {/* Category filters */}
+      {visibleCategories.length > 1 && (
+        <div className="flex flex-wrap gap-1 border-b border-border/50 px-2 py-1.5 shrink-0">
+          <button
+            onClick={() => setActiveFilter(null)}
+            className={cn(
+              "rounded-full px-2 py-0.5 text-[9px] font-medium border transition-colors",
+              !activeFilter
+                ? "bg-foreground/10 text-foreground border-foreground/20"
+                : "text-muted-foreground/60 border-transparent hover:text-muted-foreground"
+            )}
+          >
+            All
+          </button>
+          {visibleCategories.map((cat) => (
+            <button
+              key={cat}
+              onClick={() => setActiveFilter(activeFilter === cat ? null : cat)}
+              className={cn(
+                "rounded-full px-2 py-0.5 text-[9px] font-medium border transition-colors",
+                activeFilter === cat
+                  ? CATEGORY_ACTIVE_STYLES[cat]
+                  : "text-muted-foreground/60 border-transparent hover:text-muted-foreground"
+              )}
+            >
+              {cat} ({categoryCounts[cat]})
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Thought cards — scrollable */}
+      <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-2">
+        {filteredThoughts.length === 0 ? (
           <div className="flex h-full items-center justify-center text-sm text-muted-foreground/50">
-            Agent thoughts will appear here...
+            {activeFilter
+              ? `No ${activeFilter.toLowerCase()} thoughts yet...`
+              : "Agent thoughts will appear here..."}
           </div>
         ) : (
           <AnimatePresence initial={false}>
-            {thoughts.map((event, i) => (
+            {filteredThoughts.map((event, i) => (
               <ThoughtCard
                 key={event.id}
                 event={event}

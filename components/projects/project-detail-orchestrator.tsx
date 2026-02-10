@@ -28,8 +28,14 @@ function deriveView(status: ProjectStatus): ViewKey {
       return "slice-review"
     case "building":
       return "glass-brain"
+    case "complete":
+      // Keep the Glass Brain visible as a read-only audit trail
+      return "glass-brain"
+    case "failed":
+      // Build failed → go back to slice-review so user can retry
+      return "slice-review"
     default:
-      // pending, complete, failed, paused → overview
+      // pending, paused → overview
       return "overview"
   }
 }
@@ -120,8 +126,19 @@ export function ProjectDetailOrchestrator({
     initialSlices,
   })
 
-  const currentView = deriveView(project.status)
-  const prevViewRef = useRef<ViewKey>(currentView)
+  const prevViewRef = useRef<ViewKey>(deriveView(project.status))
+  const derivedView = deriveView(project.status)
+  const [viewOverride, setViewOverride] = useState<ViewKey | null>(null)
+  // Use manual override if set, otherwise use derived view
+  const currentView = viewOverride ?? derivedView
+  // Reset override when status changes (e.g. from building → complete)
+  const prevStatusRef2 = useRef(project.status)
+  useEffect(() => {
+    if (prevStatusRef2.current !== project.status) {
+      setViewOverride(null)
+      prevStatusRef2.current = project.status
+    }
+  }, [project.status])
   const [showCompletion, setShowCompletion] = useState(false)
   const [completionText, setCompletionText] = useState({ title: "", subtitle: "" })
 
@@ -216,6 +233,7 @@ export function ProjectDetailOrchestrator({
               slices={slices}
               projectId={projectId}
               onAction={handleOverviewAction}
+              onShowBuildLog={project.status === "complete" ? () => setViewOverride("glass-brain") : undefined}
             />
           </motion.div>
         )}
@@ -270,6 +288,7 @@ export function ProjectDetailOrchestrator({
               projectId={projectId}
               project={project}
               slices={slices}
+              projectStatus={project.status}
               onBuildAll={handleBuildAll}
             />
           </motion.div>
@@ -289,6 +308,8 @@ export function ProjectDetailOrchestrator({
               projectId={projectId}
               projectName={project.name}
               slices={slices}
+              isComplete={project.status === "complete"}
+              onShowOverview={() => setViewOverride("overview")}
             />
           </motion.div>
         )}

@@ -17,16 +17,23 @@ export const SOUND_KEYS = {
 
 export type SoundKey = (typeof SOUND_KEYS)[keyof typeof SOUND_KEYS]
 
-/** Base path for sound assets (relative to public) */
-const SOUNDS_BASE = "/sounds"
+/**
+ * Minimal silent MP3 data URI — prevents 404 requests when sound files don't exist.
+ * use-sound always tries to preload the URL even when soundEnabled=false.
+ *
+ * This is the smallest valid MPEG audio frame (a single silent frame).
+ * Uses audio/mpeg MIME type for maximum browser compatibility.
+ */
+const SILENT_MP3 =
+  "data:audio/mpeg;base64,//uQxAAAAAADSAAAAAASEFNRTMuMTAwVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//uQxBEAAADSAAAAAFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV"
 
 export const SOUND_URLS: Record<SoundKey, string> = {
-  [SOUND_KEYS.KEYSTROKE]: `${SOUNDS_BASE}/keystroke.mp3`,
-  [SOUND_KEYS.SUCCESS]: `${SOUNDS_BASE}/success.mp3`,
-  [SOUND_KEYS.ERROR]: `${SOUNDS_BASE}/error.mp3`,
-  [SOUND_KEYS.HEAL]: `${SOUNDS_BASE}/heal.mp3`,
-  [SOUND_KEYS.CONFIDENCE_TICK]: `${SOUNDS_BASE}/confidence-tick.mp3`,
-  [SOUND_KEYS.BOOT_UP]: `${SOUNDS_BASE}/boot-up.mp3`,
+  [SOUND_KEYS.KEYSTROKE]: SILENT_MP3,
+  [SOUND_KEYS.SUCCESS]: SILENT_MP3,
+  [SOUND_KEYS.ERROR]: SILENT_MP3,
+  [SOUND_KEYS.HEAL]: SILENT_MP3,
+  [SOUND_KEYS.CONFIDENCE_TICK]: SILENT_MP3,
+  [SOUND_KEYS.BOOT_UP]: SILENT_MP3,
 }
 
 /** Volume levels (0–1) per sound for balanced mix */

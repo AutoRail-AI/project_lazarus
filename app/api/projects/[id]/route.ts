@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { supabase } from "@/lib/db"
 import type { Database } from "@/lib/db/types"
-import { cleanupProjectResources, stopDaytonaSandboxForProject } from "@/lib/pipeline/cleanup"
+import { cleanupProjectResources, stopWorkspaceForProject } from "@/lib/pipeline/cleanup"
 import { getProjectProcessingQueue } from "@/lib/queue"
 import { logger } from "@/lib/utils/logger"
 
@@ -90,12 +90,12 @@ export async function PATCH(
         }
       }
 
-      // Also stop Daytona sandbox (preserves for resume)
+      // Also stop workspace (no-op for local fs, preserves for resume)
       try {
-        await stopDaytonaSandboxForProject(id)
-        logger.info("[API] PATCH - stopped Daytona sandbox", { projectId: id })
+        await stopWorkspaceForProject(id)
+        logger.info("[API] PATCH - stopped workspace", { projectId: id })
       } catch (stopErr: unknown) {
-        logger.warn("[API] PATCH - failed to stop Daytona sandbox (best-effort)", {
+        logger.warn("[API] PATCH - failed to stop workspace (best-effort)", {
           projectId: id,
           error: stopErr instanceof Error ? stopErr.message : "unknown",
         })
