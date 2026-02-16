@@ -76,6 +76,7 @@ export async function getOrCreateCustomer(
 export async function createCheckoutSession(
   customerId: string,
   priceId: string,
+  userId: string,
   organizationId?: string
 ): Promise<Stripe.Checkout.Session> {
   const stripe = getStripe()
@@ -89,10 +90,17 @@ export async function createCheckoutSession(
       },
     ],
     mode: "subscription",
-    success_url: `${process.env.BETTER_AUTH_URL}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
+    success_url: `${process.env.BETTER_AUTH_URL}/billing?upgraded=true`,
     cancel_url: `${process.env.BETTER_AUTH_URL}/billing`,
     metadata: {
+      userId,
       organizationId: organizationId || "",
+    },
+    subscription_data: {
+      metadata: {
+        userId,
+        organizationId: organizationId || "",
+      },
     },
   })
 }

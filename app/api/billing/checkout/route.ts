@@ -37,6 +37,7 @@ export async function POST(req: NextRequest) {
     const checkoutSession = await createCheckoutSession(
       customer.id,
       plan.priceId,
+      session.user.id,
       organizationId
     )
 
