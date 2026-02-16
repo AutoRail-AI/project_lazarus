@@ -23,26 +23,24 @@ export const stripe = new Proxy({} as Stripe, {
   },
 })
 
-// Subscription plans
-export const PLANS = {
+// Stripe price IDs mapped to plan tiers.
+// Display data (name, tagline, features) lives in lib/billing/plans.ts.
+export const STRIPE_PLANS = {
   free: {
-    name: "Free",
     priceId: process.env.STRIPE_PRICE_ID_FREE || "",
-    features: ["Basic features", "Limited usage"],
   },
   pro: {
-    name: "Pro",
     priceId: process.env.STRIPE_PRICE_ID_PRO || "",
-    features: ["All features", "Unlimited usage", "Priority support"],
   },
   enterprise: {
-    name: "Enterprise",
     priceId: process.env.STRIPE_PRICE_ID_ENTERPRISE || "",
-    features: ["All features", "Custom integrations", "Dedicated support"],
   },
 } as const
 
-export type PlanId = keyof typeof PLANS
+/** @deprecated Use STRIPE_PLANS instead. Kept for backward compat in checkout route. */
+export const PLANS = STRIPE_PLANS
+
+export type { PlanId } from "@/lib/db/types"
 
 // Create or update customer
 export async function getOrCreateCustomer(

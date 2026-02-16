@@ -2,6 +2,7 @@ import { headers } from "next/headers"
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { auth } from "@/lib/auth"
+import { checkProjectQuota } from "@/lib/billing/plans"
 import { supabase } from "@/lib/db"
 import { logger } from "@/lib/utils/logger"
 
@@ -65,6 +66,27 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { error: "Validation failed", details: parsed.error.flatten() },
         { status: 400 }
+      )
+    }
+
+    // --- PROJECT QUOTA CHECK ---
+    // Free plan = 1 project lifetime. Check before allowing project creation.
+    const quota = await checkProjectQuota(session.user.id)
+    if (!quota.allowed) {
+      logger.warn("[API] POST /api/projects - project quota exceeded", {
+        planId: quota.planId,
+        current: quota.current,
+        limit: quota.limit,
+      })
+      return NextResponse.json(
+        {
+          error: `Project limit reached. Your ${quota.planId === "free" ? "Necroma X-Ray" : quota.planId} plan allows ${quota.limit} project${quota.limit === 1 ? "" : "s"}.`,
+          upgrade: true,
+          planId: quota.planId,
+          current: quota.current,
+          limit: quota.limit,
+        },
+        { status: 403 }
       )
     }
 

@@ -49,8 +49,8 @@ export async function cleanupProjectResources(projectId: string): Promise<void> 
   // 2. Cancel BullMQ jobs
   await cancelBullMQJobs(projectId, buildJobId ?? undefined)
 
-  // 3. Clean up demo workspace (local build workspace)
-  await cleanupDemoWorkspace(projectId)
+  // 3. Clean up build workspace (local build workspace)
+  await cleanupBuildWorkspace(projectId)
 
   // 4. Clean up code-synapse local workspace
   await cleanupLocalWorkspace(projectId)
@@ -118,14 +118,14 @@ export async function cancelBullMQJobs(
 }
 
 /**
- * Clean up the demo build workspace (local-workspace module).
+ * Clean up the local build workspace.
  */
-async function cleanupDemoWorkspace(projectId: string): Promise<void> {
+async function cleanupBuildWorkspace(projectId: string): Promise<void> {
   try {
     await cleanupWorkspace(projectId)
-    logger.info("[Cleanup] Removed demo workspace", { projectId })
+    logger.info("[Cleanup] Removed build workspace", { projectId })
   } catch (err: unknown) {
-    logger.warn("[Cleanup] Failed to remove demo workspace (best-effort)", {
+    logger.warn("[Cleanup] Failed to remove build workspace (best-effort)", {
       projectId,
       error: err instanceof Error ? err.message : "unknown",
     })

@@ -7,6 +7,11 @@ export type UsageType =
   | "storage"
   | "bandwidth"
   | "feature_usage"
+  | "analysis"
+  | "slice_build"
+  | "ai_token"
+  | "migration_plan"
+  | "credits"
 
 export type Usage = Database["public"]["Tables"]["usage"]["Row"]
 

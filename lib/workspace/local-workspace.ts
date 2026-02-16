@@ -2,7 +2,7 @@
  * Local filesystem workspace manager — replaces Daytona sandbox SDK.
  *
  * All operations are pure Node.js `fs` + `child_process`.
- * Workspace location: `$DEMO_WORKSPACE_ROOT/<projectId>/`
+ * Workspace location: `$WORKSPACE_ROOT/<projectId>/`
  *
  * Boilerplate: https://github.com/10xR-AI/nextjs_fullstack_boilerplate
  */
@@ -21,10 +21,10 @@ import { join, dirname } from "path"
 
 const BOILERPLATE_URL =
   "https://github.com/10xR-AI/nextjs_fullstack_boilerplate.git"
-const DEFAULT_WORKSPACE_ROOT = "/Users/jaswanth/IdeaProjects/demo_workspace"
+const DEFAULT_WORKSPACE_ROOT = "/Users/jaswanth/IdeaProjects/workspace"
 
 function getWorkspaceRoot(): string {
-  return process.env.DEMO_WORKSPACE_ROOT || DEFAULT_WORKSPACE_ROOT
+  return process.env.WORKSPACE_ROOT || DEFAULT_WORKSPACE_ROOT
 }
 
 export function getWorkspacePath(projectId: string): string {

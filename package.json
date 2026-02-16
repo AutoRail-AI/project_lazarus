@@ -29,6 +29,7 @@
     "coupling-graph": "npx madge --extensions js,jsx,ts,tsx,css,md,mdx ./ --exclude '.next|tailwind.config.js|reset.d.ts|prettier.config.js|postcss.config.js|playwright.config.ts|next.config.js|next-env.d.ts|instrumentation.ts|e2e/|README.md|.storybook/|.eslintrc.js' --image graph.svg"
   },
   "dependencies": {
+    "@calcom/embed-react": "^1.5.3",
     "@daytonaio/sdk": "^0.139.0",
     "@google/genai": "^1.40.0",
     "@hookform/resolvers": "^5.2.2",

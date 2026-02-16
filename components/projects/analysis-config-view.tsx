@@ -930,7 +930,7 @@ export function AnalysisConfigView({ projectId, project, onConfigure }: Analysis
 
   const { codeAnalysis, behavioralAnalysis } = extractAnalysisData(project)
 
-  // Load analysis.json if available (demo data)
+  // Load analysis.json if available (static analysis data)
   useEffect(() => {
     fetch("/pos-analysis/analysis.json")
       .then((res) => {
@@ -956,7 +956,22 @@ export function AnalysisConfigView({ projectId, project, onConfigure }: Analysis
       })
 
       if (!res.ok) {
-        const data = (await res.json()) as { error?: string }
+        const data = (await res.json()) as { error?: string; upgrade?: boolean }
+
+        // Billing gate: show upgrade prompt instead of generic error
+        if ((res.status === 403 || res.status === 402) && data.upgrade) {
+          toast.error(data.error ?? "Upgrade required", {
+            description: "Visit the billing page to upgrade your plan.",
+            action: {
+              label: "Upgrade",
+              onClick: () => window.location.assign("/billing"),
+            },
+            duration: 8000,
+          })
+          setSubmitting(false)
+          return
+        }
+
         throw new Error(data.error ?? "Failed to configure")
       }
 

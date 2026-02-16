@@ -11,10 +11,12 @@ import {
   Activity,
   AlertCircle,
   ArrowLeft,
+  ArrowUpRight,
   CheckCircle2,
   Clock,
   LayoutGrid,
   Pause,
+  Scan,
   Terminal,
 } from "lucide-react"
 import Link from "next/link"
@@ -36,6 +38,8 @@ interface OverviewViewProps {
   onAction?: () => void
   /** When set, shows a "View Build Log" button to switch back to Glass Brain */
   onShowBuildLog?: () => void
+  /** Current user's plan, used to show upgrade upsell when on free plan */
+  userPlan?: string
 }
 
 const statusConfig = {
@@ -49,20 +53,17 @@ const statusConfig = {
   paused: { label: "Paused", className: "bg-warning/10 text-warning border-warning/20", Icon: Pause },
 }
 
-const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === "true"
 
-export function OverviewView({ project, slices, projectId, onAction, onShowBuildLog }: OverviewViewProps) {
+export function OverviewView({ project, slices, projectId, onAction, onShowBuildLog, userPlan }: OverviewViewProps) {
   const checkpoint = project.pipeline_checkpoint as PipelineCheckpoint | null
   const hasCheckpoint = !!(
     checkpoint &&
     Array.isArray(checkpoint.completed_steps) &&
     checkpoint.completed_steps.length > 0
   )
-  // In demo mode we never show pipeline errors — keep the magic
-  const errorContext = isDemoMode ? null : (project.error_context as ErrorContextData | null)
+  const errorContext = project.error_context as ErrorContextData | null
 
-  // In demo mode treat "failed" as a soft state — show Ready so we don't break the magic
-  const effectiveStatus = isDemoMode && project.status === "failed" ? "ready" : project.status
+  const effectiveStatus = project.status
   const config = statusConfig[effectiveStatus as keyof typeof statusConfig] ?? statusConfig.pending
   const StatusIcon = config.Icon
 
@@ -140,6 +141,36 @@ export function OverviewView({ project, slices, projectId, onAction, onShowBuild
           />
         </div>
       </div>
+      {/* X-Ray Upsell — shown when analysis is complete and user is on Free plan */}
+      {project.status === "analyzed" && userPlan === "free" && (
+        <Card className="border-electric-cyan/30 bg-electric-cyan/5">
+          <CardContent className="pt-6">
+            <div className="flex items-start gap-3">
+              <Scan className="h-5 w-5 text-electric-cyan mt-0.5 shrink-0" />
+              <div className="space-y-2">
+                <h3 className="text-sm font-semibold text-foreground">
+                  Necroma X-Ray Complete
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  Your codebase has been fully analyzed. Feature domains, entity
+                  inventory, dependency graph, and behavioral workflows are
+                  ready to explore above.
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  To generate an actionable migration plan and start building
+                  slices, upgrade to <strong>Pro</strong>.
+                </p>
+                <Button size="sm" asChild className="mt-1 bg-rail-fade hover:opacity-90 shadow-glow-purple">
+                  <Link href="/billing" className="gap-2">
+                    <ArrowUpRight className="h-4 w-4" />
+                    Upgrade to Pro
+                  </Link>
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {errorContext && (
         <Card className="border-destructive/30 bg-destructive/5">
@@ -210,23 +241,13 @@ export function OverviewView({ project, slices, projectId, onAction, onShowBuild
                 </>
               ) : project.status === "failed" ? (
                 <>
-                  {isDemoMode ? (
-                    <>
-                      <LayoutGrid className="h-10 w-10 text-muted-foreground/50 mb-4" />
-                      <h3 className="text-lg font-medium text-foreground">Ready to continue</h3>
-                      <p className="text-sm text-muted-foreground mt-2 max-w-sm">
-                        Review the plan and start building slices when you&apos;re ready.
-                      </p>
-                    </>
-                  ) : (
-                    <>
-                      <AlertCircle className="h-10 w-10 text-destructive mb-4" />
-                      <h3 className="text-lg font-medium text-foreground">Processing Failed</h3>
-                      <p className="text-sm text-muted-foreground mt-2 max-w-sm">
-                        Something went wrong during analysis. Please check the logs above for details and try again.
-                      </p>
-                    </>
-                  )}
+                  <>
+                    <AlertCircle className="h-10 w-10 text-destructive mb-4" />
+                    <h3 className="text-lg font-medium text-foreground">Processing Failed</h3>
+                    <p className="text-sm text-muted-foreground mt-2 max-w-sm">
+                      Something went wrong during analysis. Please check the logs above for details and try again.
+                    </p>
+                  </>
                 </>
               ) : (
                 <>

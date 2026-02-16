@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { stripe } from "@/lib/billing/stripe"
+import { addCredits } from "@/lib/billing/credits"
 import { supabase } from "@/lib/db"
 import type { Database, PlanId } from "@/lib/db/types"
 import { triggerWebhook } from "@/lib/webhooks/manager"
@@ -56,7 +57,7 @@ export async function POST(req: NextRequest) {
       case "customer.subscription.deleted": {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const subscription = event.data.object as any
-        
+
         await (supabase as any)
           .from("subscriptions")
           .update({ status: "canceled", updated_at: new Date().toISOString() })
@@ -73,6 +74,25 @@ export async function POST(req: NextRequest) {
       case "invoice.payment_succeeded": {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const invoice = event.data.object as any
+
+        // Provision credits for Pro plan users when payment completes.
+        // Credit amount can be set explicitly in invoice metadata (e.g. from
+        // a credit pack purchase), or defaults to amount_paid in cents.
+        const userId = invoice.subscription_details?.metadata?.userId ?? invoice.metadata?.userId
+        if (userId) {
+          const creditAmount =
+            invoice.metadata?.credit_amount != null
+              ? Number(invoice.metadata.credit_amount)
+              : (invoice.amount_paid as number) // 1 cent = 1 credit
+
+          if (creditAmount > 0) {
+            await addCredits(userId as string, creditAmount, {
+              invoiceId: invoice.id as string,
+              stripeCustomerId: invoice.customer as string,
+              amountPaid: invoice.amount_paid as number,
+            })
+          }
+        }
 
         await triggerWebhook(
           "payment.succeeded",

@@ -44,6 +44,7 @@ interface ProjectDetailOrchestratorProps {
   projectId: string
   initialProject: Project
   initialSlices: Slice[]
+  userPlan?: string
 }
 
 const fadeVariants = {
@@ -118,6 +119,7 @@ export function ProjectDetailOrchestrator({
   projectId,
   initialProject,
   initialSlices,
+  userPlan,
 }: ProjectDetailOrchestratorProps) {
   const router = useRouter()
   const { project, slices, refetch } = useProjectPolling({
@@ -234,6 +236,7 @@ export function ProjectDetailOrchestrator({
               projectId={projectId}
               onAction={handleOverviewAction}
               onShowBuildLog={project.status === "complete" ? () => setViewOverride("glass-brain") : undefined}
+              userPlan={userPlan}
             />
           </motion.div>
         )}

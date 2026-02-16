@@ -14,7 +14,7 @@
  */
 
 import "./load-env"
-import { cleanupDemoProcesses } from "../lib/demo"
+import { cleanupSpawnedProcesses } from "../lib/code-synapse/process-manager"
 import { closeRedis, startWorkers, stopWorkers } from "../lib/queue"
 
 console.log("Starting background job worker...")
@@ -25,7 +25,7 @@ startWorkers()
 // Graceful shutdown
 const shutdown = async () => {
   console.log("\nShutting down workers...")
-  cleanupDemoProcesses()
+  cleanupSpawnedProcesses()
   await stopWorkers()
   await closeRedis()
   console.log("Workers shut down successfully")

@@ -126,7 +126,22 @@ export default function NewProjectPage() {
       })
 
       if (!createRes.ok) {
-        const err = (await createRes.json()) as { error?: string }
+        const err = (await createRes.json()) as { error?: string; upgrade?: boolean }
+
+        // Quota limit reached: show upgrade prompt
+        if (createRes.status === 403 && err.upgrade) {
+          toast.error(err.error ?? "Project limit reached", {
+            description: "Upgrade to Pro for unlimited projects.",
+            action: {
+              label: "Upgrade",
+              onClick: () => window.location.assign("/billing"),
+            },
+            duration: 8000,
+          })
+          setIsSubmitting(false)
+          return
+        }
+
         throw new Error(err.error || "Failed to create project")
       }
 
@@ -249,7 +264,7 @@ export default function NewProjectPage() {
             </CardTitle>
             <CardDescription>{currentStep?.description}</CardDescription>
           </CardHeader>
-          
+
           <CardContent className="p-8">
             <AnimatePresence mode="wait" custom={direction}>
               <motion.div
@@ -281,7 +296,7 @@ export default function NewProjectPage() {
                         </p>
                       </div>
                     </div>
-                    
+
                     <div className="space-y-4">
                       <div className="space-y-2">
                         <Label htmlFor="framework">Target Framework</Label>
@@ -291,8 +306,8 @@ export default function NewProjectPage() {
                           </SelectTrigger>
                           <SelectContent>
                             {FRAMEWORKS.map((fw) => (
-                              <SelectItem 
-                                key={fw.value} 
+                              <SelectItem
+                                key={fw.value}
                                 value={fw.value}
                                 disabled={fw.comingSoon}
                               >
@@ -333,41 +348,41 @@ export default function NewProjectPage() {
                       </p>
                     </div>
                     <div className="grid gap-8 md:grid-cols-2">
-                    <div className="space-y-4">
-                      <div className="space-y-2">
-                        <Label className="flex items-center gap-2 text-base">
-                          <FileVideo className="h-4 w-4 text-primary" />
-                          Video Walkthroughs
-                        </Label>
-                        <p className="text-sm text-muted-foreground">
-                          Upload screen recordings showing key workflows.
-                        </p>
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <Label className="flex items-center gap-2 text-base">
+                            <FileVideo className="h-4 w-4 text-primary" />
+                            Video Walkthroughs
+                          </Label>
+                          <p className="text-sm text-muted-foreground">
+                            Upload screen recordings showing key workflows.
+                          </p>
+                        </div>
+                        <UploadZone
+                          type="video"
+                          files={videoFiles}
+                          onFilesChange={setVideoFiles}
+                          maxFiles={3}
+                        />
                       </div>
-                      <UploadZone
-                        type="video"
-                        files={videoFiles}
-                        onFilesChange={setVideoFiles}
-                        maxFiles={3}
-                      />
-                    </div>
-                    
-                    <div className="space-y-4">
-                      <div className="space-y-2">
-                        <Label className="flex items-center gap-2 text-base">
-                          <FileText className="h-4 w-4 text-primary" />
-                          Documentation
-                        </Label>
-                        <p className="text-sm text-muted-foreground">
-                          Specs, architecture diagrams, or notes.
-                        </p>
+
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <Label className="flex items-center gap-2 text-base">
+                            <FileText className="h-4 w-4 text-primary" />
+                            Documentation
+                          </Label>
+                          <p className="text-sm text-muted-foreground">
+                            Specs, architecture diagrams, or notes.
+                          </p>
+                        </div>
+                        <UploadZone
+                          type="document"
+                          files={documentFiles}
+                          onFilesChange={setDocumentFiles}
+                          maxFiles={5}
+                        />
                       </div>
-                      <UploadZone
-                        type="document"
-                        files={documentFiles}
-                        onFilesChange={setDocumentFiles}
-                        maxFiles={5}
-                      />
-                    </div>
                     </div>
                   </div>
                 )}
@@ -474,8 +489,8 @@ export default function NewProjectPage() {
             </Button>
 
             {step < STEPS.length - 1 ? (
-              <Button 
-                onClick={handleNext} 
+              <Button
+                onClick={handleNext}
                 disabled={!canProceed()}
                 className="w-24 bg-primary text-primary-foreground hover:bg-primary/90"
               >

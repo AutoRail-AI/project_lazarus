@@ -1,5 +1,5 @@
 /**
- * Gemini-powered code generation for demo slice builds.
+ * Gemini-powered code generation for slice builds.
  *
  * Three main functions:
  * 1. generateSliceCode — generates implementation files from slice contracts
@@ -17,45 +17,45 @@ import { getGeminiClient } from "@/lib/ai/gemini"
 /* -------------------------------------------------------------------------- */
 
 export interface FileOutput {
-  path: string
-  content: string
+    path: string
+    content: string
 }
 
 export interface CodeGenResult {
-  files: FileOutput[]
-  reasoning: string[]
+    files: FileOutput[]
+    reasoning: string[]
 }
 
 export interface SliceContract {
-  name: string
-  description?: string | null
-  behavioral_contract: {
-    user_flows?: string[]
-    inputs?: string[]
-    expected_outputs?: string[]
-    visual_assertions?: string[]
-  } | null
-  code_contract: {
-    files?: Array<{ path: string; action: string; description: string }>
-    implementation_steps?: Array<{ title: string; details: string }>
-    key_decisions?: string[]
-    pseudo_code?: string
-    verification?: string[]
-  } | null
-  modernization_flags?: {
-    uses_server_components?: boolean
-    uses_api_routes?: boolean
-    uses_database?: boolean
-    uses_auth?: boolean
-    uses_realtime?: boolean
-  } | null
+    name: string
+    description?: string | null
+    behavioral_contract: {
+        user_flows?: string[]
+        inputs?: string[]
+        expected_outputs?: string[]
+        visual_assertions?: string[]
+    } | null
+    code_contract: {
+        files?: Array<{ path: string; action: string; description: string }>
+        implementation_steps?: Array<{ title: string; details: string }>
+        key_decisions?: string[]
+        pseudo_code?: string
+        verification?: string[]
+    } | null
+    modernization_flags?: {
+        uses_server_components?: boolean
+        uses_api_routes?: boolean
+        uses_database?: boolean
+        uses_auth?: boolean
+        uses_realtime?: boolean
+    } | null
 }
 
 /* -------------------------------------------------------------------------- */
 /*  Boilerplate conventions                                                    */
 /* -------------------------------------------------------------------------- */
 
-const BOILERPLATE_CONVENTIONS = `
+export const BOILERPLATE_CONVENTIONS = `
 PROJECT CONVENTIONS (10xR-AI/nextjs_fullstack_boilerplate):
 
 FRAMEWORK: Next.js 16 App Router, React 19, TypeScript strict mode.
@@ -118,48 +118,48 @@ IMPORTANT PATTERNS:
  * Also extracts reasoning lines (lines before the first ===FILE or between ===END_FILE and ===FILE).
  */
 export function parseFileOutput(raw: string): CodeGenResult {
-  const files: FileOutput[] = []
-  const reasoning: string[] = []
+    const files: FileOutput[] = []
+    const reasoning: string[] = []
 
-  const fileRegex = /===FILE:\s*(.+?)===\n([\s\S]*?)===END_FILE===/g
-  let match: RegExpExecArray | null = null
+    const fileRegex = /===FILE:\s*(.+?)===\n([\s\S]*?)===END_FILE===/g
+    let match: RegExpExecArray | null = null
 
-  // Extract reasoning: everything outside file blocks
-  let lastEnd = 0
-  const fileBlockRegex = /===FILE:\s*.+?===[\s\S]*?===END_FILE===/g
-  let blockMatch: RegExpExecArray | null = null
-  while ((blockMatch = fileBlockRegex.exec(raw)) !== null) {
-    const before = raw.slice(lastEnd, blockMatch.index).trim()
-    if (before) {
-      reasoning.push(
-        ...before
-          .split("\n")
-          .map((l) => l.trim())
-          .filter((l) => l.length > 0 && !l.startsWith("```"))
-      )
+    // Extract reasoning: everything outside file blocks
+    let lastEnd = 0
+    const fileBlockRegex = /===FILE:\s*.+?===[\s\S]*?===END_FILE===/g
+    let blockMatch: RegExpExecArray | null = null
+    while ((blockMatch = fileBlockRegex.exec(raw)) !== null) {
+        const before = raw.slice(lastEnd, blockMatch.index).trim()
+        if (before) {
+            reasoning.push(
+                ...before
+                    .split("\n")
+                    .map((l) => l.trim())
+                    .filter((l) => l.length > 0 && !l.startsWith("```"))
+            )
+        }
+        lastEnd = blockMatch.index + blockMatch[0].length
     }
-    lastEnd = blockMatch.index + blockMatch[0].length
-  }
-  const trailing = raw.slice(lastEnd).trim()
-  if (trailing) {
-    reasoning.push(
-      ...trailing
-        .split("\n")
-        .map((l) => l.trim())
-        .filter((l) => l.length > 0 && !l.startsWith("```"))
-    )
-  }
-
-  // Extract files
-  while ((match = fileRegex.exec(raw)) !== null) {
-    const path = (match[1] ?? "").trim()
-    const content = (match[2] ?? "").trimEnd()
-    if (path && content) {
-      files.push({ path, content })
+    const trailing = raw.slice(lastEnd).trim()
+    if (trailing) {
+        reasoning.push(
+            ...trailing
+                .split("\n")
+                .map((l) => l.trim())
+                .filter((l) => l.length > 0 && !l.startsWith("```"))
+        )
     }
-  }
 
-  return { files, reasoning }
+    // Extract files
+    while ((match = fileRegex.exec(raw)) !== null) {
+        const path = (match[1] ?? "").trim()
+        const content = (match[2] ?? "").trimEnd()
+        if (path && content) {
+            files.push({ path, content })
+        }
+    }
+
+    return { files, reasoning }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -178,28 +178,19 @@ CRITICAL RULES:
 - Follow the project conventions exactly (imports, patterns, naming).
 - Include TypeScript types for all function parameters and return values.
 - Include error handling (try/catch with unknown typing).
-- For UI components, include proper loading states and empty states.
-
-INTENTIONAL BUG INSTRUCTION:
-In exactly ONE file, introduce a subtle but specific bug. Good examples:
-- Import a named export using the wrong name (e.g., import { getCustomer } when the export is { findCustomer })
-- Use the wrong field name in a Mongoose query (e.g., query 'email' when the schema field is 'emailAddress')
-- Forget to await an async call in one place
-This bug MUST cause a test to fail with a clear, diagnosable error message.
-Do NOT introduce syntax errors or missing brackets — the code must parse and build.
-In your reasoning, do NOT reveal which bug you introduced.`
+- For UI components, include proper loading states and empty states.`
 
 export async function generateSliceCode(
-  slice: SliceContract,
-  boilerplateTree: string,
-  previousSliceFiles?: string[]
+    slice: SliceContract,
+    boilerplateTree: string,
+    previousSliceFiles?: string[]
 ): Promise<CodeGenResult> {
-  const client = getGeminiClient()
+    const client = getGeminiClient()
 
-  const bc = slice.behavioral_contract
-  const cc = slice.code_contract
+    const bc = slice.behavioral_contract
+    const cc = slice.code_contract
 
-  const prompt = `
+    const prompt = `
 You are adding the "${slice.name}" feature to an existing Next.js project.
 
 ${slice.description ? `FEATURE DESCRIPTION:\n${slice.description}` : ""}
@@ -233,15 +224,14 @@ ${JSON.stringify(slice.modernization_flags ?? {}, null, 2)}
 
 Generate all the files needed for this feature. Remember:
 - Write reasoning before and between file blocks.
-- Introduce exactly ONE subtle, fixable bug (see system instructions).
-- Make all other code production-quality and fully functional.
+- Make all code production-quality and fully functional.
   `
 
-  const raw = await client.generateText(prompt, {
-    systemInstruction: CODE_GEN_SYSTEM,
-  })
+    const raw = await client.generateText(prompt, {
+        systemInstruction: CODE_GEN_SYSTEM,
+    })
 
-  return parseFileOutput(raw)
+    return parseFileOutput(raw)
 }
 
 /* -------------------------------------------------------------------------- */
@@ -259,31 +249,30 @@ CRITICAL RULES:
 - Vitest tests go in __tests__/ or co-located *.test.ts files.
 - Playwright E2E tests go in e2e/*.spec.ts files.
 - Tests must be specific: assert exact values, check specific DOM elements.
-- At least one test MUST exercise the code path where the intentional bug lives.
-  (You don't know which bug, so test thoroughly — at least one will catch it.)
+- Test thoroughly — exercise all code paths including edge cases.
 - For Playwright tests: use realistic user interactions (goto, click, fill, waitFor).
 - For Vitest tests: mock external deps (Mongoose, fetch) with vi.mock().
 - Include at least 5 unit tests and 2 E2E tests per slice.`
 
 export async function generateSliceTests(
-  slice: SliceContract,
-  generatedCode: FileOutput[],
-  boilerplateTree: string
+    slice: SliceContract,
+    generatedCode: FileOutput[],
+    boilerplateTree: string
 ): Promise<CodeGenResult> {
-  const client = getGeminiClient()
+    const client = getGeminiClient()
 
-  const bc = slice.behavioral_contract
-  const cc = slice.code_contract
+    const bc = slice.behavioral_contract
+    const cc = slice.code_contract
 
-  // Build a summary of generated code for context
-  const codeSummary = generatedCode
-    .map((f) => {
-      const preview = f.content.slice(0, 500)
-      return `--- ${f.path} (${f.content.split("\n").length} lines) ---\n${preview}${f.content.length > 500 ? "\n..." : ""}`
-    })
-    .join("\n\n")
+    // Build a summary of generated code for context
+    const codeSummary = generatedCode
+        .map((f) => {
+            const preview = f.content.slice(0, 500)
+            return `--- ${f.path} (${f.content.split("\n").length} lines) ---\n${preview}${f.content.length > 500 ? "\n..." : ""}`
+        })
+        .join("\n\n")
 
-  const prompt = `
+    const prompt = `
 Write tests for the "${slice.name}" feature that was just implemented.
 
 ${BOILERPLATE_CONVENTIONS}
@@ -305,14 +294,14 @@ Generate comprehensive tests. Remember:
 - At least 5 Vitest unit tests covering model, API, and component logic.
 - At least 2 Playwright E2E tests covering key user flows.
 - Write reasoning explaining what each test verifies.
-- Tests should be thorough enough to catch a subtle bug in the implementation.
+- Tests should be thorough enough to catch subtle bugs in the implementation.
   `
 
-  const raw = await client.generateText(prompt, {
-    systemInstruction: TEST_GEN_SYSTEM,
-  })
+    const raw = await client.generateText(prompt, {
+        systemInstruction: TEST_GEN_SYSTEM,
+    })
 
-  return parseFileOutput(raw)
+    return parseFileOutput(raw)
 }
 
 /* -------------------------------------------------------------------------- */
@@ -336,23 +325,23 @@ CRITICAL RULES:
 - After the fix, the tests MUST pass.`
 
 export interface DiagnoseResult {
-  diagnosis: string
-  fixDescription: string
-  files: FileOutput[]
+    diagnosis: string
+    fixDescription: string
+    files: FileOutput[]
 }
 
 export async function diagnoseAndFix(
-  errorOutput: string,
-  currentFiles: FileOutput[],
-  sliceName: string
+    errorOutput: string,
+    currentFiles: FileOutput[],
+    sliceName: string
 ): Promise<DiagnoseResult> {
-  const client = getGeminiClient()
+    const client = getGeminiClient()
 
-  const fileSummary = currentFiles
-    .map((f) => `--- ${f.path} ---\n${f.content}`)
-    .join("\n\n")
+    const fileSummary = currentFiles
+        .map((f) => `--- ${f.path} ---\n${f.content}`)
+        .join("\n\n")
 
-  const prompt = `
+    const prompt = `
 The "${sliceName}" feature has failing tests. Diagnose and fix.
 
 ERROR OUTPUT:
@@ -366,52 +355,52 @@ Provide:
 2. FIX: Return only the files that need to change.
   `
 
-  const raw = await client.generateText(prompt, {
-    systemInstruction: SELF_HEAL_SYSTEM,
-  })
+    const raw = await client.generateText(prompt, {
+        systemInstruction: SELF_HEAL_SYSTEM,
+    })
 
-  // Extract diagnosis from the text before the first ===FILE block
-  const firstFileIdx = raw.indexOf("===FILE:")
-  const diagnosisText = firstFileIdx >= 0 ? raw.slice(0, firstFileIdx).trim() : raw.trim()
+    // Extract diagnosis from the text before the first ===FILE block
+    const firstFileIdx = raw.indexOf("===FILE:")
+    const diagnosisText = firstFileIdx >= 0 ? raw.slice(0, firstFileIdx).trim() : raw.trim()
 
-  // Parse out the diagnosis lines
-  const diagLines = diagnosisText
-    .split("\n")
-    .map((l) => l.trim())
-    .filter((l) => l.length > 0 && !l.startsWith("```") && !l.startsWith("#"))
+    // Parse out the diagnosis lines
+    const diagLines = diagnosisText
+        .split("\n")
+        .map((l) => l.trim())
+        .filter((l) => l.length > 0 && !l.startsWith("```") && !l.startsWith("#"))
 
-  // Find the diagnosis content (after DIAGNOSIS: label if present)
-  let diagnosis = ""
-  let fixDescription = ""
-  let inDiagnosis = false
-  let inFix = false
+    // Find the diagnosis content (after DIAGNOSIS: label if present)
+    let diagnosis = ""
+    let fixDescription = ""
+    let inDiagnosis = false
+    let inFix = false
 
-  for (const line of diagLines) {
-    const lower = line.toLowerCase()
-    if (lower.startsWith("diagnosis") || lower.startsWith("root cause")) {
-      inDiagnosis = true
-      inFix = false
-      const afterColon = line.split(":").slice(1).join(":").trim()
-      if (afterColon) diagnosis += afterColon + " "
-      continue
+    for (const line of diagLines) {
+        const lower = line.toLowerCase()
+        if (lower.startsWith("diagnosis") || lower.startsWith("root cause")) {
+            inDiagnosis = true
+            inFix = false
+            const afterColon = line.split(":").slice(1).join(":").trim()
+            if (afterColon) diagnosis += afterColon + " "
+            continue
+        }
+        if (lower.startsWith("fix") || lower.startsWith("solution") || lower.startsWith("resolution")) {
+            inFix = true
+            inDiagnosis = false
+            const afterColon = line.split(":").slice(1).join(":").trim()
+            if (afterColon) fixDescription += afterColon + " "
+            continue
+        }
+        if (inDiagnosis) diagnosis += line + " "
+        else if (inFix) fixDescription += line + " "
+        else diagnosis += line + " " // Default to diagnosis
     }
-    if (lower.startsWith("fix") || lower.startsWith("solution") || lower.startsWith("resolution")) {
-      inFix = true
-      inDiagnosis = false
-      const afterColon = line.split(":").slice(1).join(":").trim()
-      if (afterColon) fixDescription += afterColon + " "
-      continue
-    }
-    if (inDiagnosis) diagnosis += line + " "
-    else if (inFix) fixDescription += line + " "
-    else diagnosis += line + " " // Default to diagnosis
-  }
 
-  diagnosis = diagnosis.trim() || "Test failure detected. Analyzing and applying fix."
-  fixDescription = fixDescription.trim() || "Applying targeted code fix based on error analysis."
+    diagnosis = diagnosis.trim() || "Test failure detected. Analyzing and applying fix."
+    fixDescription = fixDescription.trim() || "Applying targeted code fix based on error analysis."
 
-  // Extract fixed files
-  const { files } = parseFileOutput(raw)
+    // Extract fixed files
+    const { files } = parseFileOutput(raw)
 
-  return { diagnosis, fixDescription, files }
+    return { diagnosis, fixDescription, files }
 }

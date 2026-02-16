@@ -1,6 +1,8 @@
 import { headers } from "next/headers"
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
+import { getUserPlan, getPlanConfig, PlanGateError } from "@/lib/billing/plans"
+import { hasCredits } from "@/lib/billing/credits"
 import { supabase } from "@/lib/db"
 import { advancePipelineStep } from "@/lib/pipeline"
 import { queueProjectProcessing } from "@/lib/queue"
@@ -44,6 +46,39 @@ export async function POST(
         { error: `Project must be in 'analyzed' status to configure. Current: ${project.status}` },
         { status: 409 }
       )
+    }
+
+    // --- PLAN GATE ---
+    // Free users cannot proceed past X-Ray analysis to planning.
+    const planId = await getUserPlan(session.user.id)
+    const config = getPlanConfig(planId)
+
+    if (!config.capabilities.migrationPlan) {
+      return NextResponse.json(
+        {
+          error: "Your current plan (Necroma X-Ray) does not include migration planning. Upgrade to Pro to unlock.",
+          upgrade: true,
+          planId,
+        },
+        { status: 403 }
+      )
+    }
+
+    // Pro users: verify they have enough credits for planning
+    if (planId === "pro") {
+      const creditCheck = await hasCredits(session.user.id, "migration_plan")
+      if (!creditCheck.sufficient) {
+        return NextResponse.json(
+          {
+            error: `Insufficient credits. Planning costs ${creditCheck.cost} credits, you have ${creditCheck.balance}.`,
+            upgrade: true,
+            planId,
+            creditsNeeded: creditCheck.cost,
+            creditsAvailable: creditCheck.balance,
+          },
+          { status: 402 }
+        )
+      }
     }
 
     // Parse request body

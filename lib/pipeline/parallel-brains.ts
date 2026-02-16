@@ -1,6 +1,5 @@
 /**
  * Shared orchestrator for running Left Brain + Right Brain analysis in parallel.
- * Used by both the demo pipeline and production pipeline.
  *
  * Each brain function is an async closure that:
  *  - Emits its own logs/thoughts (prefixed with [Code Analysis] or [App Behaviour])

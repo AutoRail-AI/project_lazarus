@@ -7,11 +7,10 @@
  * behaves as an agentic coder.
  *
  * The prompt includes boilerplate conventions, full behavioral/code contracts,
- * test-first instructions, and the intentional-bug instruction for demo
- * self-heal guarantee.
+ * and test-first instructions.
  */
 
-import type { SliceContract } from "@/lib/demo/gemini-codegen"
+import type { SliceContract } from "@/lib/ai/gemini-codegen"
 import { env } from "@/env.mjs"
 
 /* -------------------------------------------------------------------------- */
@@ -123,35 +122,6 @@ const AGENTIC_INSTRUCTIONS = `
 - Use clear, engineer-level language (this is displayed to a technical audience).
 `.trim()
 
-/* -------------------------------------------------------------------------- */
-/*  Demo-specific instructions                                                 */
-/* -------------------------------------------------------------------------- */
-
-const DEMO_INSTRUCTIONS = `
-## DEMO MODE — IMPORTANT:
-You are running in a demo environment. Your work will be showcased to an audience in real-time.
-
-INTENTIONAL BUG INSTRUCTION:
-In exactly ONE implementation file, introduce a subtle but specific bug. Good examples:
-- Import a named export using the wrong name (e.g., import { getCustomer } when the export is { findCustomer })
-- Use the wrong field name in a query (e.g., query 'email' when the schema field is 'emailAddress')
-- Forget to await an async call in one place
-
-This bug MUST:
-- Cause a test to fail with a clear, diagnosable error message
-- NOT be a syntax error or missing bracket — the code must parse and build
-- Be naturally fixable in the self-heal loop
-
-When you encounter the test failure:
-1. Express genuine surprise and curiosity in your reasoning
-2. Carefully diagnose the root cause
-3. Make a targeted, precise fix
-4. Re-run tests to verify the fix
-5. Express satisfaction when tests pass
-
-This self-heal demonstration is a KEY feature of the platform. Make it look natural.
-Do NOT reveal in your reasoning that the bug was intentional.
-`.trim()
 
 /* -------------------------------------------------------------------------- */
 /*  MCP tool instructions                                                      */
@@ -175,8 +145,6 @@ These can be queried for additional context about the legacy application being t
 
 export interface BuildPromptOptions {
   slice: SliceContract
-  /** If true, includes the intentional-bug instruction */
-  isDemoMode: boolean
   /** Optional list of files from previous slices (for context) */
   previousSliceFiles?: string[]
   /** Optional boilerplate directory tree for context */
@@ -187,7 +155,7 @@ export interface BuildPromptOptions {
  * Build the complete task prompt for OpenHands.
  */
 export function buildSliceBuildPrompt(options: BuildPromptOptions): string {
-  const { slice, isDemoMode, previousSliceFiles, boilerplateTree } = options
+  const { slice, previousSliceFiles, boilerplateTree } = options
 
   const sections: string[] = []
 
@@ -312,12 +280,6 @@ export function buildSliceBuildPrompt(options: BuildPromptOptions): string {
   // Agentic instructions
   sections.push(AGENTIC_INSTRUCTIONS)
   sections.push("")
-
-  // Demo mode instructions
-  if (isDemoMode) {
-    sections.push(DEMO_INSTRUCTIONS)
-    sections.push("")
-  }
 
   // MCP tools
   sections.push(getMcpInstructions())

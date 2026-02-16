@@ -1,6 +1,6 @@
 import { supabase } from "@/lib/db"
 import type { Database } from "@/lib/db/types"
-import { buildSliceInSandbox } from "@/lib/demo"
+import { buildSliceInSandbox } from "@/lib/build/slice-builder"
 import { advancePipelineStep, setErrorContext } from "./orchestrator"
 import { MAX_SLICE_RETRIES } from "./types"
 

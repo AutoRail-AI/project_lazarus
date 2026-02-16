@@ -10,7 +10,7 @@
  *   3. Maps each event to our agent_events format (for Glass Brain)
  *   4. Tracks confidence, self-heal count, lines written, tests passed
  *   5. On completion: calls onSliceComplete()
- *   6. On error: falls back to mock event player (safety net)
+ *   6. On error: sets slice as failed
  */
 
 import { Annotation, StateGraph, START, END } from "@langchain/langgraph"
@@ -37,7 +37,7 @@ import {
 } from "./event-mapper"
 import type { MappedEvent } from "./event-mapper"
 import { buildSliceBuildPrompt } from "./prompt-builder"
-import type { SliceContract } from "@/lib/demo/gemini-codegen"
+import type { SliceContract } from "@/lib/ai/gemini-codegen"
 
 /* -------------------------------------------------------------------------- */
 /*  Constants                                                                  */
@@ -57,7 +57,6 @@ const BuildStateAnnotation = Annotation.Root({
   sliceName: Annotation<string>,
   userId: Annotation<string>,
   sliceContract: Annotation<SliceContract | null>,
-  isDemoMode: Annotation<boolean>,
   boilerplateTree: Annotation<string | null>,
   previousSliceFiles: Annotation<string[]>,
 
@@ -135,7 +134,7 @@ async function setSliceStatus(sliceId: string, status: string): Promise<void> {
  * SETUP node: Build prompt, create OpenHands conversation, emit initial events.
  */
 async function setupNode(state: BuildState): Promise<Partial<BuildState>> {
-  const { projectId, sliceId, sliceName, sliceContract, isDemoMode, boilerplateTree, previousSliceFiles } = state
+  const { projectId, sliceId, sliceName, sliceContract, boilerplateTree, previousSliceFiles } = state
 
   logger.info(`[BuildGraph] Setup: creating conversation for slice "${sliceName}"`, {
     projectId,
@@ -160,7 +159,6 @@ async function setupNode(state: BuildState): Promise<Partial<BuildState>> {
       behavioral_contract: null,
       code_contract: null,
     },
-    isDemoMode,
     previousSliceFiles,
     boilerplateTree: boilerplateTree ?? undefined,
   })
@@ -312,17 +310,7 @@ async function evaluateNode(state: BuildState): Promise<Partial<BuildState>> {
     sliceId,
   })
 
-  // In demo mode, we always consider it complete (never fail the demo)
-  if (state.isDemoMode) {
-    // Ensure confidence is above threshold for demo
-    const finalConfidence = Math.max(confidence, CONFIDENCE_THRESHOLD + 0.02)
-    return {
-      status: "complete",
-      confidence: finalConfidence,
-    }
-  }
-
-  // Production: check if confidence is above threshold
+  // Check if confidence is above threshold
   if (confidence >= CONFIDENCE_THRESHOLD) {
     return { status: "complete" }
   }
@@ -438,33 +426,7 @@ async function handleErrorNode(state: BuildState): Promise<Partial<BuildState>> 
     }
   }
 
-  // In demo mode, fall back to mock event player
-  if (state.isDemoMode) {
-    await emitEvent(
-      projectId,
-      sliceId,
-      "thought",
-      "Switching to optimized build pipeline...",
-      { category: "Planning", pipeline_event: "fallback_to_mock" }
-    )
-
-    // Dynamically import to avoid circular deps
-    const { playDemoBuild } = await import("@/lib/demo/event-player")
-    try {
-      await playDemoBuild(projectId, sliceId, sliceName, userId)
-    } catch (mockErr: unknown) {
-      // Even mock failed — force-complete so demo never shows failure
-      logger.error(
-        "[BuildGraph] Mock fallback also failed",
-        mockErr instanceof Error ? mockErr : undefined,
-        { projectId, sliceId }
-      )
-      await onSliceComplete(projectId, sliceId, userId)
-    }
-    return { status: "complete" }
-  }
-
-  // Non-demo: set slice as failed
+  // Set slice as failed
   await setSliceStatus(sliceId, "failed")
   return { status: "failed" }
 }
@@ -513,7 +475,6 @@ export interface StartBuildOptions {
   sliceName: string
   userId: string
   sliceContract?: SliceContract | null
-  isDemoMode?: boolean
   boilerplateTree?: string | null
   previousSliceFiles?: string[]
 }
@@ -521,7 +482,7 @@ export interface StartBuildOptions {
 /**
  * Execute the full build graph for a single slice.
  *
- * This is the main entry point called from demo-slice-builder.ts.
+ * This is the main entry point called from slice-builder.ts.
  * It creates an OpenHands conversation, monitors the event stream,
  * and completes the slice when done.
  *
@@ -547,7 +508,6 @@ export async function executeSliceBuild(
     sliceName: options.sliceName,
     userId: options.userId,
     sliceContract: options.sliceContract ?? null,
-    isDemoMode: options.isDemoMode ?? false,
     boilerplateTree: options.boilerplateTree ?? null,
     previousSliceFiles: options.previousSliceFiles ?? [],
     conversationId: null,

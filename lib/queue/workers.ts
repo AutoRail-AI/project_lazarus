@@ -1,9 +1,10 @@
 import { type Job, Worker } from "bullmq"
 import { env } from "@/env.mjs"
 import { generateSlices } from "@/lib/ai/gemini-planner"
+import { getUserPlan, getPlanConfig } from "@/lib/billing/plans"
+import { deductCredits } from "@/lib/billing/credits"
 import { supabase } from "@/lib/db"
 import type { Database } from "@/lib/db/types"
-import { processDemoProjectJob } from "@/lib/demo"
 import { createRightBrainClient } from "@/lib/mcp/right-brain-client"
 import {
   advancePipelineStep,
@@ -144,12 +145,6 @@ async function insertThought(
 async function processProjectJob(
   job: Job<ProjectProcessingJobData>
 ): Promise<JobResult> {
-  // Demo mode: route to demo pipeline (real MCP + Gemini, no Daytona)
-  if (env.DEMO_MODE) {
-    console.log(`[Project Processing] DEMO_MODE active — using demo pipeline`)
-    return processDemoProjectJob(job)
-  }
-
   const { projectId, userId, githubUrl, targetFramework } = job.data
 
   console.log(`[Project Processing] Starting for project ${projectId}`)
@@ -201,58 +196,58 @@ async function processProjectJob(
       projectId,
       runLeftBrain: needsLeftBrain && githubUrl
         ? async () => {
-            await insertThought(projectId, "[Code Analysis] Running Code-Synapse analysis on repository...")
+          await insertThought(projectId, "[Code Analysis] Running Code-Synapse analysis on repository...")
 
-            const { client, metadata } = await runCodeSynapse(
-              projectId,
-              githubUrl,
-              async (msg) => { await insertThought(projectId, `[Code Analysis] ${msg}`) },
-              sandboxId ? { instanceId: sandboxId } : undefined
-            )
+          const { client, metadata } = await runCodeSynapse(
+            projectId,
+            githubUrl,
+            async (msg) => { await insertThought(projectId, `[Code Analysis] ${msg}`) },
+            sandboxId ? { instanceId: sandboxId } : undefined
+          )
 
-            await job.updateProgress(20)
-            await insertThought(projectId, "[Code Analysis] Building knowledge graph and extracting feature domains...")
-            const featureMap = await client.deriveFeatureMap()
-            await job.updateProgress(35)
+          await job.updateProgress(20)
+          await insertThought(projectId, "[Code Analysis] Building knowledge graph and extracting feature domains...")
+          const featureMap = await client.deriveFeatureMap()
+          await job.updateProgress(35)
 
-            await insertThought(projectId, "[Code Analysis] Gathering project statistics...")
-            const stats = await client.getStatsOverview()
-            await job.updateProgress(45)
+          await insertThought(projectId, "[Code Analysis] Gathering project statistics...")
+          const stats = await client.getStatsOverview()
+          await job.updateProgress(45)
 
-            await insertThought(projectId, `[Code Analysis] Found ${featureMap.totalFeatures} feature domains spanning ${featureMap.totalEntities} entities`)
-            await insertThought(projectId, "[Code Analysis] Code analysis complete.")
-            return {
-              featureMap,
-              stats,
-              mcpUrl: metadata.mcpUrl,
-              _sandboxId: metadata.sandboxId,
-            }
+          await insertThought(projectId, `[Code Analysis] Found ${featureMap.totalFeatures} feature domains spanning ${featureMap.totalEntities} entities`)
+          await insertThought(projectId, "[Code Analysis] Code analysis complete.")
+          return {
+            featureMap,
+            stats,
+            mcpUrl: metadata.mcpUrl,
+            _sandboxId: metadata.sandboxId,
           }
+        }
         : undefined,
 
       runRightBrain: needsRightBrain && env.RIGHT_BRAIN_API_URL && projectAssets.length > 0
         ? async () => {
-            await insertThought(projectId, "[App Behaviour] Starting behavioral analysis...")
+          await insertThought(projectId, "[App Behaviour] Starting behavioral analysis...")
 
-            const rbClient = createRightBrainClient()
+          const rbClient = createRightBrainClient()
 
-            const s3Refs = projectAssets.map((a) => a.storage_path)
-            const ingestResult = await rbClient.startIngestion({
-              website_url: githubUrl,
-              knowledge_id: projectId,
-              s3_references: s3Refs,
-            })
+          const s3Refs = projectAssets.map((a) => a.storage_path)
+          const ingestResult = await rbClient.startIngestion({
+            website_url: githubUrl,
+            knowledge_id: projectId,
+            s3_references: s3Refs,
+          })
 
-            await job.updateProgress(65)
+          await job.updateProgress(65)
 
-            const workflow = await rbClient.waitForWorkflow(ingestResult.job_id)
-            if (workflow.status === "failed") {
-              throw new Error(`App Behaviour workflow failed: ${workflow.error}`)
-            }
-
-            await insertThought(projectId, "[App Behaviour] Ingestion workflow complete.")
-            return { workflow }
+          const workflow = await rbClient.waitForWorkflow(ingestResult.job_id)
+          if (workflow.status === "failed") {
+            throw new Error(`App Behaviour workflow failed: ${workflow.error}`)
           }
+
+          await insertThought(projectId, "[App Behaviour] Ingestion workflow complete.")
+          return { workflow }
+        }
         : undefined,
     })
 
@@ -367,6 +362,27 @@ async function processProjectJob(
     // --- GEMINI PLANNER ---
     // Reached when resumed from configure route (brains already done via checkpoint)
     if (!isStepDone("planning")) {
+      // Safety-net plan gate (primary gate is in the configure route)
+      const planId = await getUserPlan(userId)
+      const planConfig = getPlanConfig(planId)
+      if (!planConfig.capabilities.migrationPlan) {
+        await (supabase as any)
+          .from("projects")
+          .update({ status: "analyzed", updated_at: new Date().toISOString() })
+          .eq("id", projectId)
+        await insertThought(projectId, "Necroma X-Ray complete. Upgrade to Pro for migration planning.")
+        return { success: true, message: "xray_complete" }
+      }
+
+      // Pro: deduct credits for migration planning
+      if (planId === "pro") {
+        const result = await deductCredits(userId, "migration_plan", { projectId })
+        if (!result.success) {
+          await insertThought(projectId, `Insufficient credits for planning. Need ${result.cost}, have ${result.remaining}.`)
+          return { success: false, error: "insufficient_credits" }
+        }
+      }
+
       await advancePipelineStep(projectId, "planning")
       await insertThought(projectId, "Generating vertical slices...")
 

@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server"
-import { env } from "@/env.mjs"
 import { auth } from "@/lib/auth"
 import { TEST_USER } from "@/lib/testing/seed-test-user"
 import { logger } from "@/lib/utils/logger"
 
 export async function POST() {
-  // Guard: only in development or demo mode
-  if (process.env.NODE_ENV === "production" && !env.DEMO_MODE) {
+  // Guard: only in development
+  if (process.env.NODE_ENV === "production") {
     return NextResponse.json({ error: "Not available in production" }, { status: 403 })
   }
 
